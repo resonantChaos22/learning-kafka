@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  kafka1:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka1
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093,2@localhost:9094"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka1:29092,EXTERNAL://localhost:9092"
+      KAFKA_LISTENERS: "PLAINTEXT://localhost:9092,CONTROLLER://localhost:9093"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      CLUSTER_ID: "yZ5G_ejLSCmzYl6YV0L86w"
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    volumes:
+      - ./kafka2_data:/var/lib/kafka/data
+
+  kafka2:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka2
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_NODE_ID: 2
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093,2@localhost:9094"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka2:29092,EXTERNAL://localhost:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://localhost:9094,CONTROLLER://localhost:9095"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      CLUSTER_ID: "yZ5G_ejLSCmzYl6YV0L86w"
+    ports:
+      - "9094:9094"
+      - "9095:9095"
+    volumes:
+      - ./kafka2_data:/var/lib/kafka/data
