@@ -69,24 +69,47 @@ services:
       CLUSTER_ID: "yZ5G_ejLSCmzYl6YV0L86w"
       KAFKA_LOG_DIRS: "/var/lib/kafka/data"
 
+  control-center:
+    image: confluentinc/cp-enterprise-control-center
+    container_name: control-center
+    hostname: control-center
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: "kafka1:29092,kafka2:29092,kafka3:29092"
+      # CONTROL_CENTER_CONNECT_CLUSTER: "kafka-cluster"
+      # CONTROL_CENTER_KSQL_KSQLDB_URL: "http://ksqldb-server:8088"
+      # CONTROL_CENTER_KSQL_KSQLDB_ADVERTISED_URL: "http://control-center:8088"
+      CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+      PORT: 9021
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+      - schema-registry
+  schema-registry:
+    image: confluentinc/cp-schema-registry
+    container_name: schema-registry
+    hostname: schema-registry
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka1:29092,kafka2:29092,kafka3:29092"
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+
 volumes:
   kafka1_data:
   kafka2_data:
   kafka3_data:
-  # schema-registry:
-  #   image: confluentinc/cp-schema-registry
-  #   container_name: schema-registry
-  #   hostname: schema-registry
-  #   ports:
-  #     - "8081:8081"
-  #   environment:
-  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
-  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka1:29092,kafka2:29092,kafka3:29092"
-  #     SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
-  #   depends_on:
-  #     - kafka1
-  #     - kafka2
-  #     - kafka3
 # networks:
 #   default:
 #     name: kafka-network
