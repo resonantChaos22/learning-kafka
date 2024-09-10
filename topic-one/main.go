@@ -47,11 +47,17 @@ func SetupKafka(kc *kafka.KafkaCluster) {
 
 func RunProducer(kc *kafka.KafkaCluster) {
 	err := kc.CreateProducer()
+	defer func() {
+		if err := kc.Producer.Close(); err != nil {
+			log.Fatalf("Failed to close Kafka Producer: %v", err)
+		}
+		log.Println("Kafka Producer successfully closed")
+	}()
 	if err != nil {
 		log.Fatalf("Failed to create Kafka Producer: %v\n", err)
 	}
 
-	kc.SendDummyMessages()
+	kc.SendDummyMessages("order_details")
 
 }
 

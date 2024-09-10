@@ -11,8 +11,10 @@ import (
 type KafkaCluster struct {
 	brokers  []string
 	version  sarama.KafkaVersion
+	topics   []string
 	Admin    sarama.ClusterAdmin
 	Producer sarama.SyncProducer
+	Consumer sarama.ConsumerGroup
 }
 
 func NewKafkaCluster(brokers []string, version sarama.KafkaVersion) *KafkaCluster {
@@ -49,6 +51,7 @@ func (kc *KafkaCluster) CreateTopic(topicName string, numPartitions, replication
 	if err != nil {
 		return err
 	}
+	kc.topics = append(kc.topics, topicName)
 
 	log.Printf("Topic with name %s, number of partitions %d and replication factor %d successfully created.\n", topicName, numPartitions, replicationFactor)
 	return nil

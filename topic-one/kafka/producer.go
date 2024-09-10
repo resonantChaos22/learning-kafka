@@ -56,14 +56,11 @@ func (kc *KafkaCluster) ProduceMessage(topicName, key string, data any) error {
 	return nil
 }
 
-func (kc *KafkaCluster) SendDummyMessages() {
+func (kc *KafkaCluster) SendDummyMessages(topicName string) {
 
 	i := 0
 	var key string
 	for {
-		if i > 10 {
-			return
-		}
 		msg := KafkaMessage{
 			Data: fmt.Sprintf("Message#%d", i),
 			Time: int(time.Now().UnixMicro()),
@@ -75,7 +72,7 @@ func (kc *KafkaCluster) SendDummyMessages() {
 			key = "odd"
 		}
 
-		err := kc.ProduceMessage("order_details", key, msg)
+		err := kc.ProduceMessage(topicName, key, msg)
 		if err != nil {
 			log.Println(err)
 			continue
