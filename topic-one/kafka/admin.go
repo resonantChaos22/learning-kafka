@@ -9,9 +9,10 @@ import (
 )
 
 type KafkaCluster struct {
-	brokers []string
-	version sarama.KafkaVersion
-	Admin   sarama.ClusterAdmin
+	brokers  []string
+	version  sarama.KafkaVersion
+	Admin    sarama.ClusterAdmin
+	Producer sarama.SyncProducer
 }
 
 func NewKafkaCluster(brokers []string, version sarama.KafkaVersion) *KafkaCluster {

@@ -45,6 +45,16 @@ func SetupKafka(kc *kafka.KafkaCluster) {
 	}()
 }
 
+func RunProducer(kc *kafka.KafkaCluster) {
+	err := kc.CreateProducer()
+	if err != nil {
+		log.Fatalf("Failed to create Kafka Producer: %v\n", err)
+	}
+
+	kc.SendDummyMessages()
+
+}
+
 func main() {
 
 	if len(os.Args) < 3 {
@@ -60,13 +70,10 @@ func main() {
 	switch command {
 	case "setup":
 		SetupKafka(kc)
+	case "run-producer":
+		RunProducer(kc)
 	default:
 		log.Println("Command Not Found")
 	}
-
-	// err = kc.DeleteTopic("order_details")
-	// if err != nil {
-	// 	log.Fatalf("Failed to delete the topic: %v", err)
-	// }
 
 }
