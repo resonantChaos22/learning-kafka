@@ -22,6 +22,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       CLUSTER_ID: "yZ5G_ejLSCmzYl6YV0L86w"
       KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "kafka1:29092,kafka2:29092,kafka3:29092"
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
+      CONFLUENT_METRICS_ENABLE: "true"
+      CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
+    networks:
+      - kafka-network
 
   kafka2:
     image: confluentinc/cp-kafka
@@ -45,6 +51,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       CLUSTER_ID: "yZ5G_ejLSCmzYl6YV0L86w"
       KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "kafka1:29092,kafka2:29092,kafka3:29092"
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
+      CONFLUENT_METRICS_ENABLE: "true"
+      CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
+    networks:
+      - kafka-network
 
   kafka3:
     image: confluentinc/cp-kafka
@@ -68,6 +80,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       CLUSTER_ID: "yZ5G_ejLSCmzYl6YV0L86w"
       KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "kafka1:29092,kafka2:29092,kafka3:29092"
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
+      CONFLUENT_METRICS_ENABLE: "true"
+      CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
+    networks:
+      - kafka-network
 
   control-center:
     image: confluentinc/cp-enterprise-control-center
@@ -91,6 +109,9 @@ services:
       - kafka2
       - kafka3
       - schema-registry
+    networks:
+      - kafka-network
+
   schema-registry:
     image: confluentinc/cp-schema-registry
     container_name: schema-registry
@@ -105,12 +126,13 @@ services:
       - kafka1
       - kafka2
       - kafka3
+    networks:
+      - kafka-network
 
 volumes:
   kafka1_data:
   kafka2_data:
   kafka3_data:
-# networks:
-#   default:
-#     name: kafka-network
-#     external: true
+
+networks:
+  kafka-network:

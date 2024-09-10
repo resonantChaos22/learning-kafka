@@ -2,17 +2,16 @@ package main
 
 import (
 	"log"
+	"os"
 	"time"
 	"topic-one/kafka"
 
 	"github.com/IBM/sarama"
 )
 
-func main() {
-	config := sarama.NewConfig()
+func SetupKafka(kc *kafka.KafkaCluster) {
+	err := kc.CreateAdmin()
 
-	brokers := []string{"localhost:9092", "localhost:9093", "locahost:9094"}
-	kc, err := kafka.NewKafkaCluster(brokers, config, sarama.DefaultVersion)
 	if err != nil {
 		log.Fatalf("Failed to create Kafka ClusterAdmin: %v\n", err)
 	}
@@ -44,6 +43,26 @@ func main() {
 			time.Sleep(2 * time.Millisecond)
 		}
 	}()
+}
+
+func main() {
+
+	if len(os.Args) < 3 {
+		log.Println("No Command Provided")
+		return
+	}
+	command := os.Args[2]
+	log.Println(command)
+
+	brokers := []string{"localhost:9092", "localhost:9093", "locahost:9094"}
+	kc := kafka.NewKafkaCluster(brokers, sarama.DefaultVersion)
+
+	switch command {
+	case "setup":
+		SetupKafka(kc)
+	default:
+		log.Println("Command Not Found")
+	}
 
 	// err = kc.DeleteTopic("order_details")
 	// if err != nil {

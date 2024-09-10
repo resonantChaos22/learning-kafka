@@ -10,26 +10,31 @@ import (
 
 type KafkaCluster struct {
 	brokers []string
-	config  *sarama.Config
 	version sarama.KafkaVersion
 	Admin   sarama.ClusterAdmin
 }
 
-func NewKafkaCluster(brokers []string, config *sarama.Config, version sarama.KafkaVersion) (*KafkaCluster, error) {
-	config.Version = version
-	admin, err := sarama.NewClusterAdmin(brokers, config)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Println("Kafka ClusterAdmin successfully created")
+func NewKafkaCluster(brokers []string, version sarama.KafkaVersion) *KafkaCluster {
 
 	return &KafkaCluster{
 		brokers: brokers,
-		config:  config,
 		version: version,
-		Admin:   admin,
-	}, nil
+	}
+}
+
+func (kc *KafkaCluster) CreateAdmin() error {
+	config := sarama.NewConfig()
+	config.Version = kc.version
+
+	admin, err := sarama.NewClusterAdmin(kc.brokers, config)
+	if err != nil {
+		return err
+	}
+
+	kc.Admin = admin
+	log.Println("Kafka ClusterAdmin successfully created")
+
+	return nil
 }
 
 func (kc *KafkaCluster) CreateTopic(topicName string, numPartitions, replicationFactor int) error {
