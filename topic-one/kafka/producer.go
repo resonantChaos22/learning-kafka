@@ -56,7 +56,7 @@ func (kc *KafkaCluster) ProduceMessage(topicName, key string, data any) error {
 	return nil
 }
 
-func (kc *KafkaCluster) SendDummyMessages(topicName string) {
+func (kc *KafkaCluster) SendDummyMessages(topicName string, sleepTime int) {
 
 	i := 0
 	var key string
@@ -78,6 +78,6 @@ func (kc *KafkaCluster) SendDummyMessages(topicName string) {
 			continue
 		}
 		i++
-		time.Sleep(5 * time.Second)
+		time.Sleep(time.Duration(sleepTime) * time.Second)
 	}
 }

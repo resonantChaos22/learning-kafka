@@ -47,17 +47,33 @@ func SetupKafka(kc *kafka.KafkaCluster) {
 
 func RunProducer(kc *kafka.KafkaCluster) {
 	err := kc.CreateProducer()
+	if err != nil {
+		log.Fatalf("Failed to create Kafka Producer: %v\n", err)
+	}
 	defer func() {
 		if err := kc.Producer.Close(); err != nil {
 			log.Fatalf("Failed to close Kafka Producer: %v", err)
 		}
 		log.Println("Kafka Producer successfully closed")
 	}()
-	if err != nil {
-		log.Fatalf("Failed to create Kafka Producer: %v\n", err)
-	}
 
-	kc.SendDummyMessages("order_details")
+	kc.SendDummyMessages("order_details", 5)
+
+}
+
+func RunConsumer(kc *kafka.KafkaCluster) {
+	err := kc.CreateConsumer()
+	if err != nil {
+		log.Fatalf("Failed to create Kafka Consumer Group: %v\n", err)
+	}
+	defer func() {
+		if err := kc.Producer.Close(); err != nil {
+			log.Fatalf("Failed to close Kafka Consumer Group: %v", err)
+		}
+		log.Println("Kafka Consumer Group successfully closed")
+	}()
+
+	kc.ListenForMessagesFromSingleTopic("order_details")
 
 }
 
@@ -78,6 +94,8 @@ func main() {
 		SetupKafka(kc)
 	case "run-producer":
 		RunProducer(kc)
+	case "run-consumer":
+		RunConsumer(kc)
 	default:
 		log.Println("Command Not Found")
 	}
