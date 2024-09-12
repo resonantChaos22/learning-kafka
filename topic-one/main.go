@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 	"topic-one/kafka"
 
 	"github.com/IBM/sarama"
+	"github.com/fatih/color"
 )
 
 func SetupKafka(kc *kafka.KafkaCluster) {
@@ -20,10 +25,15 @@ func SetupKafka(kc *kafka.KafkaCluster) {
 		if err := kc.Admin.Close(); err != nil {
 			log.Fatalf("Failed to close Kafka ClusterAdmin: %v", err)
 		}
-		log.Println("Kafka ClusterAdmin successfully closed!")
+		color.Red("Kafka ClusterAdmin successfully closed!")
 	}()
 
 	err = kc.CreateTopic("order_details", 3, 2)
+	if err != nil {
+		log.Fatalf("Failed to create the topic: %v", err)
+	}
+
+	err = kc.CreateTopic("payment_confirmed", 3, 2)
 	if err != nil {
 		log.Fatalf("Failed to create the topic: %v", err)
 	}
@@ -34,10 +44,10 @@ func SetupKafka(kc *kafka.KafkaCluster) {
 		for {
 			checkTime := time.Now()
 			err := kc.ListTopics()
-			log.Printf("Took %dms to list topics", time.Since(checkTime).Milliseconds())
+			color.Magenta("Took %dms to list topics", time.Since(checkTime).Milliseconds())
 			if err == nil {
 				elapsed := time.Since(startTime) // Calculate elapsed time
-				log.Printf("It took %d milliseconds to achieve sync", elapsed.Milliseconds())
+				color.Cyan("It took %d milliseconds to achieve sync", elapsed.Milliseconds())
 				return
 			}
 			time.Sleep(2 * time.Millisecond)
@@ -45,59 +55,91 @@ func SetupKafka(kc *kafka.KafkaCluster) {
 	}()
 }
 
-func RunProducer(kc *kafka.KafkaCluster) {
+func RunProducer(kc *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Context) {
 	err := kc.CreateProducer()
 	if err != nil {
 		log.Fatalf("Failed to create Kafka Producer: %v\n", err)
 	}
+	defer wg.Done()
 	defer func() {
 		if err := kc.Producer.Close(); err != nil {
 			log.Fatalf("Failed to close Kafka Producer: %v", err)
 		}
-		log.Println("Kafka Producer successfully closed")
+		color.Red("Kafka Producer successfully closed")
 	}()
 
-	kc.SendDummyMessages("order_details", 5)
+	wgProducer := new(sync.WaitGroup)
+	wgProducer.Add(2)
 
+	go kc.SendDummyMessages("order_details", 5, wgProducer, ctx)
+	go kc.SendDummyMessages("payment_confirmed", 2, wgProducer, ctx)
+
+	<-ctx.Done()
+
+	wgProducer.Wait()
 }
 
-func RunConsumer(kc *kafka.KafkaCluster) {
+func RunConsumer(kc *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Context) {
 	err := kc.CreateConsumer()
 	if err != nil {
 		log.Fatalf("Failed to create Kafka Consumer Group: %v\n", err)
 	}
+	defer wg.Done()
 	defer func() {
-		if err := kc.Producer.Close(); err != nil {
+		if err := kc.Consumer.Close(); err != nil {
 			log.Fatalf("Failed to close Kafka Consumer Group: %v", err)
 		}
-		log.Println("Kafka Consumer Group successfully closed")
+		color.Red("Kafka Consumer Group successfully closed")
 	}()
 
-	kc.ListenForMessagesFromSingleTopic("order_details")
+	wgConsumer := new(sync.WaitGroup)
+	wgConsumer.Add(1)
 
+	go kc.ListenForMessagesFromMulitpleTopics([]string{"order_details", "payment_confirmed"}, wgConsumer, ctx)
+
+	<-ctx.Done()
+
+	wgConsumer.Wait()
 }
 
 func main() {
-
 	if len(os.Args) < 3 {
-		log.Println("No Command Provided")
+		color.Red("No Command Provided")
 		return
 	}
 	command := os.Args[2]
-	log.Println(command)
+	color.Yellow(command)
 
 	brokers := []string{"localhost:9092", "localhost:9093", "locahost:9094"}
 	kc := kafka.NewKafkaCluster(brokers, sarama.DefaultVersion)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT)
+
+	wg := new(sync.WaitGroup)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	switch command {
 	case "setup":
 		SetupKafka(kc)
 	case "run-producer":
-		RunProducer(kc)
+		wg.Add(1)
+		go RunProducer(kc, wg, ctx)
 	case "run-consumer":
-		RunConsumer(kc)
+		wg.Add(1)
+		go RunConsumer(kc, wg, ctx)
 	default:
 		log.Println("Command Not Found")
 	}
 
+	sig := <-sigChan
+	color.Red("Received signal: %v, initiating graceful shutdown.", sig)
+
+	cancel()
+
+	wg.Wait()
+
+	color.Red("Program Exited")
 }

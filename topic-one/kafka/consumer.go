@@ -3,9 +3,10 @@ package kafka
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"sync"
 
 	"github.com/IBM/sarama"
+	"github.com/fatih/color"
 )
 
 // ConsumerGroupHandler handles the actual claiming process
@@ -22,10 +23,10 @@ func (ConsumerGroupHandler) Cleanup(sarama.ConsumerGroupSession) error {
 func (ConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	msg := new(KafkaMessage)
 	for message := range claim.Messages() {
-		log.Printf("Consumed message: Key = %s at Partition = %d, Offset = %d of topic %s",
+		color.HiMagenta("Consumed message: Key = %s at Partition = %d, Offset = %d of topic %s",
 			string(message.Key), message.Partition, message.Offset, message.Topic)
 		json.Unmarshal(message.Value, msg)
-		log.Printf("%v", msg)
+		color.HiMagenta("%v", msg)
 
 		session.MarkMessage(message, "Processed!")
 	}
@@ -49,14 +50,34 @@ func (kc *KafkaCluster) CreateConsumer() error {
 	return nil
 }
 
-func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string) {
+func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string, wg *sync.WaitGroup, ctx context.Context) {
+	defer wg.Done()
 	handler := ConsumerGroupHandler{}
-	ctx := context.Background()
-	log.Printf("Listening for messages on %s topic...", topicName)
+	color.Green("Listening for messages on %s topic...", topicName)
 
 	for {
 		if err := kc.Consumer.Consume(ctx, []string{topicName}, handler); err != nil {
-			log.Printf("ERROR: %v", err)
+			if err.Error() == "context canceled" {
+				color.Red("Stoppped listening to %v topic", topicName)
+				return
+			}
+			color.Red("ERROR: %v", err)
+		}
+	}
+}
+
+func (kc *KafkaCluster) ListenForMessagesFromMulitpleTopics(topics []string, wg *sync.WaitGroup, ctx context.Context) {
+	defer wg.Done()
+	handler := ConsumerGroupHandler{}
+	color.Green("Listening for messages on the given topics...")
+
+	for {
+		if err := kc.Consumer.Consume(ctx, topics, handler); err != nil {
+			if err.Error() == "context canceled" {
+				color.Red("Stoppped listening to given topics")
+				return
+			}
+			color.Red("ERROR: %v", err)
 		}
 	}
 }

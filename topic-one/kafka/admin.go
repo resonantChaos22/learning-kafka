@@ -2,10 +2,10 @@ package kafka
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/IBM/sarama"
+	"github.com/fatih/color"
 )
 
 type KafkaCluster struct {
@@ -35,7 +35,7 @@ func (kc *KafkaCluster) CreateAdmin() error {
 	}
 
 	kc.Admin = admin
-	log.Println("Kafka ClusterAdmin successfully created")
+	color.Green("Kafka ClusterAdmin successfully created")
 
 	return nil
 }
@@ -53,7 +53,7 @@ func (kc *KafkaCluster) CreateTopic(topicName string, numPartitions, replication
 	}
 	kc.topics = append(kc.topics, topicName)
 
-	log.Printf("Topic with name %s, number of partitions %d and replication factor %d successfully created.\n", topicName, numPartitions, replicationFactor)
+	color.Green("Topic with name %s, number of partitions %d and replication factor %d successfully created.\n", topicName, numPartitions, replicationFactor)
 	return nil
 }
 
@@ -69,13 +69,14 @@ func (kc *KafkaCluster) ListTopics() error {
 		if !strings.HasPrefix(topic, "_") {
 			builder.WriteString(fmt.Sprintf("%s ", topic))
 			numTopics++
+			kc.topics = append(kc.topics, topic)
 		}
 	}
 	if numTopics == 0 {
 		return fmt.Errorf("no topics found")
 	}
-	log.Printf("Kafka Topics(%d):=\n", numTopics)
-	log.Println(builder.String())
+	color.Yellow("Kafka Topics(%d):=\n", numTopics)
+	color.Magenta(builder.String())
 	return nil
 }
 
@@ -85,7 +86,7 @@ func (kc *KafkaCluster) DeleteTopic(topicName string) error {
 		return err
 	}
 
-	log.Printf("Topic with name %s deleted successfully", topicName)
+	color.Green("Topic with name %s deleted successfully", topicName)
 	return nil
 }
 
