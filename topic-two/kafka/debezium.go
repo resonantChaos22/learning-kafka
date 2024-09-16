@@ -30,6 +30,7 @@ func (kc *KafkaCluster) CreateDebeziumConnector(url string) error {
 		return err
 	}
 	io.Copy(log.Writer(), bytes.NewBuffer(plan))
+	log.Println()
 
 	res, err := http.Post(fmt.Sprintf("%s/", url), "application/json", bytes.NewBuffer(plan))
 	if err != nil {
@@ -39,7 +40,8 @@ func (kc *KafkaCluster) CreateDebeziumConnector(url string) error {
 
 	io.Copy(log.Writer(), res.Body)
 	log.Println()
-	if res.StatusCode != 200 {
+	if res.StatusCode != 201 {
+		log.Printf("Response returned with %d status.", res.StatusCode)
 		return fmt.Errorf("connector not added")
 	}
 

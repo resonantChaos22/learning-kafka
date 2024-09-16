@@ -8,7 +8,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"topic-one/kafka"
+	"topic-two/items"
+	"topic-two/kafka"
 
 	"github.com/IBM/sarama"
 	"github.com/fatih/color"
@@ -18,26 +19,42 @@ const (
 	DEBEZIUM_CONNECT_URL = "http://localhost:8083/connectors"
 )
 
-func SetupKafka(kc *kafka.KafkaCluster) {
-	err := kc.CreateAdmin()
+type Executer struct {
+	cluster *kafka.KafkaCluster
+	wg      *sync.WaitGroup
+	ctx     context.Context
+	store   items.Storage
+}
+
+func NewExecuter(cluster *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Context, store items.Storage) *Executer {
+	return &Executer{
+		cluster: cluster,
+		wg:      wg,
+		ctx:     ctx,
+		store:   store,
+	}
+}
+
+func (e *Executer) SetupKafka() {
+	err := e.cluster.CreateAdmin()
 
 	if err != nil {
 		log.Fatalf("Failed to create Kafka ClusterAdmin: %v\n", err)
 	}
 
 	defer func() {
-		if err := kc.Admin.Close(); err != nil {
+		if err := e.cluster.Admin.Close(); err != nil {
 			log.Fatalf("Failed to close Kafka ClusterAdmin: %v", err)
 		}
 		color.Red("Kafka ClusterAdmin successfully closed!")
 	}()
 
-	err = kc.CreateTopic("order_details", 3, 2)
+	err = e.cluster.CreateTopic("value_change", 3, 2)
 	if err != nil {
 		log.Fatalf("Failed to create the topic: %v", err)
 	}
 
-	err = kc.CreateTopic("payment_confirmed", 3, 2)
+	err = e.cluster.CreateTopic("item_create", 3, 2)
 	if err != nil {
 		log.Fatalf("Failed to create the topic: %v", err)
 	}
@@ -47,7 +64,7 @@ func SetupKafka(kc *kafka.KafkaCluster) {
 
 		for {
 			checkTime := time.Now()
-			err := kc.ListTopics()
+			err := e.cluster.ListTopics()
 			color.Magenta("Took %dms to list topics", time.Since(checkTime).Milliseconds())
 			if err == nil {
 				elapsed := time.Since(startTime) // Calculate elapsed time
@@ -59,38 +76,14 @@ func SetupKafka(kc *kafka.KafkaCluster) {
 	}()
 }
 
-func RunProducer(kc *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Context) {
-	err := kc.CreateProducer()
-	if err != nil {
-		log.Fatalf("Failed to create Kafka Producer: %v\n", err)
-	}
-	defer wg.Done()
-	defer func() {
-		if err := kc.Producer.Close(); err != nil {
-			log.Fatalf("Failed to close Kafka Producer: %v", err)
-		}
-		color.Red("Kafka Producer successfully closed")
-	}()
-
-	wgProducer := new(sync.WaitGroup)
-	wgProducer.Add(2)
-
-	go kc.SendDummyMessages("order_details", 5, wgProducer, ctx)
-	go kc.SendDummyMessages("payment_confirmed", 2, wgProducer, ctx)
-
-	<-ctx.Done()
-
-	wgProducer.Wait()
-}
-
-func RunConsumer(kc *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Context) {
-	err := kc.CreateConsumer()
+func (e *Executer) RunConsumer() {
+	_, err := e.cluster.CreateConsumer()
 	if err != nil {
 		log.Fatalf("Failed to create Kafka Consumer Group: %v\n", err)
 	}
-	defer wg.Done()
+	defer e.wg.Done()
 	defer func() {
-		if err := kc.Consumer.Close(); err != nil {
+		if err := e.cluster.Consumer.Close(); err != nil {
 			log.Fatalf("Failed to close Kafka Consumer Group: %v", err)
 		}
 		color.Red("Kafka Consumer Group successfully closed")
@@ -99,21 +92,23 @@ func RunConsumer(kc *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Context
 	wgConsumer := new(sync.WaitGroup)
 	wgConsumer.Add(1)
 
-	go kc.ListenForMessagesFromMulitpleTopics([]string{"order_details", "payment_confirmed"}, wgConsumer, ctx)
+	//	run multiple consumers here and how they deal with the code
 
-	<-ctx.Done()
+	go e.cluster.ListenForMessagesFromMulitpleTopics([]string{"order_details", "payment_confirmed"}, wgConsumer, e.ctx)
+
+	<-e.ctx.Done()
 
 	wgConsumer.Wait()
 }
 
-func SetupDebezium(kc *kafka.KafkaCluster) {
-	isConnectorPresent, err := kc.CheckDebeziumConnector(DEBEZIUM_CONNECT_URL, "pg_connector")
+func (e *Executer) SetupDebezium() {
+	isConnectorPresent, err := e.cluster.CheckDebeziumConnector(DEBEZIUM_CONNECT_URL, "pg_connector")
 	if err != nil {
 		log.Fatalf("Error in checking presence of connector - %v", err)
 	}
 
 	if !isConnectorPresent {
-		err = kc.CreateDebeziumConnector(DEBEZIUM_CONNECT_URL)
+		err = e.cluster.CreateDebeziumConnector(DEBEZIUM_CONNECT_URL)
 		if err != nil {
 			log.Fatalf("Error in creating the connector - %v", err)
 		}
@@ -139,19 +134,24 @@ func main() {
 	wg := new(sync.WaitGroup)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	store, err := items.NewPostgresStore()
+	if err != nil {
+		log.Fatalf("Error in creating Postgres Store: %v", err)
+	}
+	executer := NewExecuter(kc, wg, ctx, store)
 	defer cancel()
 
 	switch command {
 	case "setup":
-		SetupKafka(kc)
+		executer.SetupKafka()
 	case "run-producer":
-		wg.Add(1)
-		go RunProducer(kc, wg, ctx)
+		executer.wg.Add(1)
+		go executer.RunProducer()
 	case "run-consumer":
-		wg.Add(1)
-		go RunConsumer(kc, wg, ctx)
+		executer.wg.Add(1)
+		go executer.RunConsumer()
 	case "add-debezium":
-		SetupDebezium(kc)
+		executer.SetupDebezium()
 	default:
 		log.Println("Command Not Found")
 	}
@@ -161,7 +161,7 @@ func main() {
 
 	cancel()
 
-	wg.Wait()
+	executer.wg.Wait()
 
 	color.Red("Program Exited")
 }

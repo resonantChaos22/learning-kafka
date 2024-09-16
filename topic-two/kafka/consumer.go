@@ -3,6 +3,8 @@ package kafka
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"sync"
 
 	"github.com/IBM/sarama"
@@ -34,29 +36,38 @@ func (ConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, cl
 	return nil
 }
 
-func (kc *KafkaCluster) CreateConsumer() error {
+func (kc *KafkaCluster) CreateConsumer(groupName ...string) (sarama.ConsumerGroup, error) {
 	config := sarama.NewConfig()
 	config.Version = kc.version
 	config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 	// config.Consumer.Group.Session.Timeout = time.Millisecond * 30
 	// config.Consumer.Group.Heartbeat.Interval = time.Millisecond * 2
-
-	group := "OrderCG"
+	group := "Default_Consumer"
+	if len(groupName) != 0 {
+		group = groupName[0]
+	}
 	consumerGroup, err := sarama.NewConsumerGroup(kc.brokers, group, config)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	kc.Consumer = consumerGroup
-	return nil
+	if kc.Consumer == nil {
+		kc.Consumer = consumerGroup
+	}
+	return consumerGroup, nil
 }
 
 func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string, wg *sync.WaitGroup, ctx context.Context) {
 	defer wg.Done()
+	currConsumerGroup, err := kc.CreateConsumer(fmt.Sprintf("%s_Consumer", topicName))
+	if err != nil {
+		log.Printf("Unable to create consumer group due to error: %v", err)
+		return
+	}
 	handler := ConsumerGroupHandler{}
 	color.Green("Listening for messages on %s topic...", topicName)
 
 	for {
-		if err := kc.Consumer.Consume(ctx, []string{topicName}, handler); err != nil {
+		if err := currConsumerGroup.Consume(ctx, []string{topicName}, handler); err != nil {
 			if err.Error() == "context canceled" {
 				color.Red("Stoppped listening to %v topic", topicName)
 				return

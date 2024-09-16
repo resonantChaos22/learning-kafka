@@ -134,8 +134,8 @@ services:
     networks:
       - kafka-network
     environment:
-      POSTGRES_PASSWORD: admin
-      POSTGRES_USER: admin-user
+      POSTGRES_PASSWORD: eatsleepcode
+      POSTGRES_USER: dev
       POSTGRES_DB: debezium_test
     ports:
       - 5432:5432

@@ -1,14 +1,18 @@
-module topic-one
+module topic-two
 
 go 1.22.2
 
 require (
-	github.com/IBM/sarama v1.43.3 // indirect
+	github.com/IBM/sarama v1.43.3
+	github.com/fatih/color v1.17.0
+	github.com/lib/pq v1.10.9
+)
+
+require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
-	github.com/fatih/color v1.17.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect

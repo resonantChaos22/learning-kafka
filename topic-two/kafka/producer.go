@@ -1,11 +1,7 @@
 package kafka
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"sync"
-	"time"
+	"strconv"
 
 	"github.com/IBM/sarama"
 	"github.com/fatih/color"
@@ -34,17 +30,12 @@ func (kc *KafkaCluster) CreateProducer() error {
 	return nil
 }
 
-func (kc *KafkaCluster) ProduceMessage(topicName, key string, data any) error {
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		color.Red("Error in serializing data to jsondata")
-		return err
-	}
+func (kc *KafkaCluster) ProduceMessage(topicName string, key int, value float64) error {
 
 	msg := &sarama.ProducerMessage{
 		Topic: topicName,
-		Key:   sarama.StringEncoder(key),
-		Value: sarama.ByteEncoder(jsonData),
+		Key:   sarama.StringEncoder(strconv.Itoa(key)),
+		Value: sarama.StringEncoder(strconv.FormatFloat(value, 'f', 2, 64)),
 	}
 
 	partition, offset, err := kc.Producer.SendMessage(msg)
@@ -56,36 +47,4 @@ func (kc *KafkaCluster) ProduceMessage(topicName, key string, data any) error {
 	color.Cyan("Message sent to %d partition at %d offset successfully to %s topic.", partition, offset, topicName)
 
 	return nil
-}
-
-func (kc *KafkaCluster) SendDummyMessages(topicName string, sleepTime int, wg *sync.WaitGroup, ctx context.Context) {
-	defer wg.Done()
-	i := 0
-	var key string
-	for {
-		select {
-		case <-ctx.Done():
-			color.Red("Stopping sending dummy messages to %v topic.", topicName)
-			return
-		default:
-			msg := KafkaMessage{
-				Data: fmt.Sprintf("Message#%d", i),
-				Time: int(time.Now().UnixMicro()),
-			}
-
-			if i%2 == 0 {
-				key = "even"
-			} else {
-				key = "odd"
-			}
-
-			err := kc.ProduceMessage(topicName, key, msg)
-			if err != nil {
-				color.Red("%v", err)
-				continue
-			}
-			i++
-			time.Sleep(time.Duration(sleepTime) * time.Second)
-		}
-	}
 }
