@@ -112,7 +112,7 @@ func (e *Executer) Setup() {
 }
 
 func main() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 4 {
 		color.Red("No Command Provided")
 		return
 	}

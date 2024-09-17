@@ -68,7 +68,9 @@ func (handler ChangeValueHandler) ConsumeClaim(session sarama.ConsumerGroupSessi
 }
 
 // ItemUpdateHandler handles the messages in `debezium.public.items` topics coming from debezium
-type ItemUpdateHandler struct{}
+type ItemUpdateHandler struct {
+	ID int
+}
 
 func (ItemUpdateHandler) Setup(sarama.ConsumerGroupSession) error {
 	return nil
@@ -78,14 +80,19 @@ func (ItemUpdateHandler) Cleanup(sarama.ConsumerGroupSession) error {
 	return nil
 }
 
-func (ItemUpdateHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+func (itemHandler ItemUpdateHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	msg := new(DebeziumUpdateMessage)
 	for message := range claim.Messages() {
-		color.Cyan("%s", string(message.Key))
-		json.Unmarshal(message.Value, msg)
-		log.Printf("%v", msg)
+		err := json.Unmarshal(message.Value, msg)
+		if err != nil {
+			log.Printf("Error in unmarshalling - %v", err)
+		}
+		if msg.After.Id == itemHandler.ID {
+			color.Cyan("%s", string(message.Key))
+			log.Printf("%v", msg)
 
-		session.MarkMessage(message, "Processed!")
+			session.MarkMessage(message, "Processed!")
+		}
 	}
 
 	return nil
@@ -105,15 +112,21 @@ func (kc *KafkaCluster) CreateConsumer(groupName ...string) (sarama.ConsumerGrou
 	if err != nil {
 		return nil, err
 	}
-	if kc.Consumer == nil {
+	if group == "Default_Consumer" {
 		kc.Consumer = consumerGroup
 	}
+	color.Yellow("%s created!", group)
 	return consumerGroup, nil
 }
 
-func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string, store items.Storage, wg *sync.WaitGroup, ctx context.Context) {
+func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string, store items.Storage, wg *sync.WaitGroup, ctx context.Context, id ...int) {
 	defer wg.Done()
-	currConsumerGroup, err := kc.CreateConsumer(fmt.Sprintf("%s_Consumer", topicName))
+	itemID := 0
+	if len(id) != 0 {
+		itemID = id[0]
+	}
+	log.Printf("HELLO=%d", itemID)
+	currConsumerGroup, err := kc.CreateConsumer(fmt.Sprintf("%s_%d_Consumer", topicName, itemID))
 	log.Println("Created Consumer")
 	if err != nil {
 		log.Printf("Unable to create consumer group due to error: %v", err)
@@ -132,7 +145,10 @@ func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string, store
 			store: store,
 		}
 	case "debezium.public.items":
-		handler = ItemUpdateHandler{}
+		handler = ItemUpdateHandler{
+			ID: itemID,
+		}
+		log.Printf("%v", handler)
 	default:
 		handler = ChangeValueHandler{
 			store: store,
