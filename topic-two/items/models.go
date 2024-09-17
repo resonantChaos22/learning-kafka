@@ -1,8 +1,13 @@
 package items
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
+	"log"
+	"math"
+	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type Item struct {
@@ -12,32 +17,34 @@ type Item struct {
 }
 
 func (store *PostgresStore) CreateItem(item *Item) error {
-	query := `INSERT INTO item (name, value) VALUES ($1, $2)`
+	query := `INSERT INTO items (name, value) VALUES ($1, $2)`
 
-	_, err := store.db.Query(query, item.Name, item.Value)
+	_, err := store.db.Exec(context.Background(), query, item.Name, item.Value)
 	return err
 }
 
 func (store *PostgresStore) UpdateValue(id int, value float64) error {
-	query := `UPDATE item SET value=$1 WHERE id=$2`
+	query := `UPDATE items SET value=$1 WHERE id=$2`
 
-	_, err := store.db.Query(query, value, id)
+	roundedValue := math.Round(value*100) / 100
+	_, err := store.db.Exec(context.Background(), query, roundedValue, id)
 	return err
 }
 
 func (store *PostgresStore) UpdateItem(item *Item) error {
-	query := `UPDATE item SET name=$1, value=$2 WHERE id=$3`
+	query := `UPDATE items SET name=$1, value=$2 WHERE id=$3`
 
-	_, err := store.db.Query(query, item.Name, item.Value, item.ID)
+	_, err := store.db.Exec(context.Background(), query, item.Name, item.Value, item.ID)
 	return err
 }
 
 func (store *PostgresStore) GetAllItems() ([]*Item, error) {
-	query := `SELECT * FROM item`
-	rows, err := store.db.Query(query)
+	query := `SELECT * FROM items`
+	rows, err := store.db.Query(context.Background(), query)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	items := []*Item{}
 	for rows.Next() {
@@ -53,11 +60,15 @@ func (store *PostgresStore) GetAllItems() ([]*Item, error) {
 }
 
 func (store *PostgresStore) GetItem(id int) (*Item, error) {
-	query := `SELECT * FROM item WHERE id=$1`
-	rows, err := store.db.Query(query)
+	query := `SELECT * FROM items WHERE id=$1`
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	store.LogPoolStats()
+	rows, err := store.db.Query(ctx, query, id)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		return scanIntoItem(rows)
 	}
@@ -66,18 +77,25 @@ func (store *PostgresStore) GetItem(id int) (*Item, error) {
 }
 
 func (store *PostgresStore) DeleteItem(id int) error {
-	query := `DELETE FROM item WHERE id=$1`
-	_, err := store.db.Query(query, id)
+	query := `DELETE FROM items WHERE id=$1`
+	_, err := store.db.Exec(context.Background(), query, id)
 
 	return err
 }
 
-func scanIntoItem(rows *sql.Rows) (*Item, error) {
+func scanIntoItem(rows pgx.Rows) (*Item, error) {
 	item := new(Item)
-	err := rows.Scan(item.ID, item.Name, item.Value)
+	err := rows.Scan(&item.ID, &item.Name, &item.Value)
 	if err != nil {
+		log.Println("ERROR")
 		return nil, err
 	}
 
 	return item, nil
+}
+
+func (store *PostgresStore) LogPoolStats() {
+	stats := store.db.Stat()
+	log.Printf("Connections In Use: %d, Connections Available: %d, Total Connections: %d",
+		stats.AcquiredConns(), stats.IdleConns(), stats.TotalConns())
 }

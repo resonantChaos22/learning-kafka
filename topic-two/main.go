@@ -17,6 +17,8 @@ import (
 
 const (
 	DEBEZIUM_CONNECT_URL = "http://localhost:8083/connectors"
+	VALUE_CHANGE_TOPIC   = "value_change"
+	DEBEZIUM_ITEM_TOPIC  = "debezium.public.items"
 )
 
 type Executer struct {
@@ -49,12 +51,7 @@ func (e *Executer) SetupKafka() {
 		color.Red("Kafka ClusterAdmin successfully closed!")
 	}()
 
-	err = e.cluster.CreateTopic("value_change", 3, 2)
-	if err != nil {
-		log.Fatalf("Failed to create the topic: %v", err)
-	}
-
-	err = e.cluster.CreateTopic("item_create", 3, 2)
+	err = e.cluster.CreateTopic(VALUE_CHANGE_TOPIC, 3, 2)
 	if err != nil {
 		log.Fatalf("Failed to create the topic: %v", err)
 	}
@@ -76,31 +73,6 @@ func (e *Executer) SetupKafka() {
 	}()
 }
 
-func (e *Executer) RunConsumer() {
-	_, err := e.cluster.CreateConsumer()
-	if err != nil {
-		log.Fatalf("Failed to create Kafka Consumer Group: %v\n", err)
-	}
-	defer e.wg.Done()
-	defer func() {
-		if err := e.cluster.Consumer.Close(); err != nil {
-			log.Fatalf("Failed to close Kafka Consumer Group: %v", err)
-		}
-		color.Red("Kafka Consumer Group successfully closed")
-	}()
-
-	wgConsumer := new(sync.WaitGroup)
-	wgConsumer.Add(1)
-
-	//	run multiple consumers here and how they deal with the code
-
-	go e.cluster.ListenForMessagesFromMulitpleTopics([]string{"order_details", "payment_confirmed"}, wgConsumer, e.ctx)
-
-	<-e.ctx.Done()
-
-	wgConsumer.Wait()
-}
-
 func (e *Executer) SetupDebezium() {
 	isConnectorPresent, err := e.cluster.CheckDebeziumConnector(DEBEZIUM_CONNECT_URL, "pg_connector")
 	if err != nil {
@@ -117,12 +89,34 @@ func (e *Executer) SetupDebezium() {
 	log.Println("Debezium Connector Is Active!")
 }
 
+func (e *Executer) SetupDB() {
+	err := e.store.CreateItemTable()
+	if err != nil {
+		log.Fatalf("Error in creating item table: %v", err)
+	}
+
+	items := []*items.Item{{Name: "Spotify", Value: 500.0}, {Name: "Reddit", Value: 800.0}, {Name: "Netflix", Value: 200.0}}
+
+	for _, item := range items {
+		err = e.store.CreateItem(item)
+		if err != nil {
+			log.Fatalf("Error in adding item to table: %v", err)
+		}
+	}
+}
+
+func (e *Executer) Setup() {
+	e.SetupKafka()
+	e.SetupDebezium()
+	e.SetupDB()
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		color.Red("No Command Provided")
 		return
 	}
-	command := os.Args[2]
+	command := os.Args[3]
 	color.Yellow(command)
 
 	brokers := []string{"localhost:9092", "localhost:9093", "locahost:9094"}
@@ -143,7 +137,7 @@ func main() {
 
 	switch command {
 	case "setup":
-		executer.SetupKafka()
+		executer.Setup()
 	case "run-producer":
 		executer.wg.Add(1)
 		go executer.RunProducer()

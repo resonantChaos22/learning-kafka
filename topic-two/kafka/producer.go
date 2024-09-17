@@ -7,11 +7,6 @@ import (
 	"github.com/fatih/color"
 )
 
-type KafkaMessage struct {
-	Data string `json:"data"`
-	Time int    `json:"time"`
-}
-
 func (kc *KafkaCluster) CreateProducer() error {
 	config := sarama.NewConfig()
 	config.Version = kc.version

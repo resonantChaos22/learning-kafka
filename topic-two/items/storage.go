@@ -1,9 +1,9 @@
 package items
 
 import (
-	"database/sql"
+	"context"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Storage interface {
@@ -17,39 +17,49 @@ type Storage interface {
 }
 
 type PostgresStore struct {
-	db *sql.DB
+	db *pgxpool.Pool
 }
 
 func NewPostgresStore() (*PostgresStore, error) {
-	connStr := "user=dev dbname=debezium_test password=eatsleepcode sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
+	// connStr := "user=dev dbname=debezium_test password=eatsleepcode sslmode=disable"
+	connStr := "postgres://dev:eatsleepcode@localhost:5432/debezium_test"
+	config, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
 		return nil, err
 	}
+	// config.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
+	// 	color.Green("Connection to Postgres Established!")
+	// 	return nil
+	// }
+	config.MaxConns = 25
 
-	if err := db.Ping(); err != nil {
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		return nil, err
+	}
+	if err := pool.Ping(context.Background()); err != nil {
 		return nil, err
 	}
 
 	return &PostgresStore{
-		db: db,
+		db: pool,
 	}, nil
 }
 
 func (store *PostgresStore) CreateItemTable() error {
-	query := `CREATE TABLE IF NOT EXISTS item(
+	query := `CREATE TABLE IF NOT EXISTS items(
 		id serial primary key,
 		name varchar(50),
-		value numeric
+		value float
 	)`
 
-	_, err := store.db.Exec(query)
+	_, err := store.db.Exec(context.Background(), query)
 	return err
 }
 
 func (store *PostgresStore) DropItemTable() error {
-	query := `DROP TABLE IF EXISTS item`
+	query := `DROP TABLE IF EXISTS items`
 
-	_, err := store.db.Query(query)
+	_, err := store.db.Query(context.Background(), query)
 	return err
 }

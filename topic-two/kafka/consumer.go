@@ -5,30 +5,85 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
+	"topic-two/items"
 
 	"github.com/IBM/sarama"
 	"github.com/fatih/color"
 )
 
-// ConsumerGroupHandler handles the actual claiming process
-type ConsumerGroupHandler struct{}
+// ChangeValueHandler handles the messages from "value_change" topic
+type ChangeValueHandler struct {
+	store items.Storage
+}
 
-func (ConsumerGroupHandler) Setup(sarama.ConsumerGroupSession) error {
+type DebeziumUpdateMessage struct {
+	After DebeziumAfter `json:"after"`
+	Op    string        `json:"op"`
+}
+
+type DebeziumAfter struct {
+	Id    int     `json:"id"`
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+}
+
+func (ChangeValueHandler) Setup(sarama.ConsumerGroupSession) error {
 	return nil
 }
 
-func (ConsumerGroupHandler) Cleanup(sarama.ConsumerGroupSession) error {
+func (ChangeValueHandler) Cleanup(sarama.ConsumerGroupSession) error {
 	return nil
 }
 
-func (ConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	msg := new(KafkaMessage)
+func (handler ChangeValueHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for message := range claim.Messages() {
-		color.HiMagenta("Consumed message: Key = %s at Partition = %d, Offset = %d of topic %s",
-			string(message.Key), message.Partition, message.Offset, message.Topic)
+		id, err := strconv.Atoi(string(message.Key))
+		if err != nil {
+			log.Printf("Error in getting id: %v", err)
+			continue
+		}
+		delta, err := strconv.ParseFloat(string(message.Value), 64)
+		if err != nil {
+			log.Printf("Error in getting delta: %v", err)
+			continue
+		}
+
+		item, err := handler.store.GetItem(id)
+		if err != nil {
+			log.Printf("Error in getting the item with id %d: %v", id, err)
+			continue
+		}
+		err = handler.store.UpdateValue(item.ID, item.Value+delta)
+		if err != nil {
+			log.Printf("Error in updating the value for item with id %d: %v", id, err)
+			continue
+		}
+		color.Green("Successfully updated %v's value to %f with a delta of %v", item.Name, item.Value+delta, delta)
+		session.MarkMessage(message, "Processed!")
+	}
+
+	return nil
+}
+
+// ItemUpdateHandler handles the messages in `debezium.public.items` topics coming from debezium
+type ItemUpdateHandler struct{}
+
+func (ItemUpdateHandler) Setup(sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+func (ItemUpdateHandler) Cleanup(sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+func (ItemUpdateHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	msg := new(DebeziumUpdateMessage)
+	for message := range claim.Messages() {
+		color.Cyan("%s", string(message.Key))
 		json.Unmarshal(message.Value, msg)
-		color.HiMagenta("%v", msg)
+		log.Printf("%v", msg)
 
 		session.MarkMessage(message, "Processed!")
 	}
@@ -56,36 +111,39 @@ func (kc *KafkaCluster) CreateConsumer(groupName ...string) (sarama.ConsumerGrou
 	return consumerGroup, nil
 }
 
-func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string, wg *sync.WaitGroup, ctx context.Context) {
+func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string, store items.Storage, wg *sync.WaitGroup, ctx context.Context) {
 	defer wg.Done()
 	currConsumerGroup, err := kc.CreateConsumer(fmt.Sprintf("%s_Consumer", topicName))
+	log.Println("Created Consumer")
 	if err != nil {
 		log.Printf("Unable to create consumer group due to error: %v", err)
 		return
 	}
-	handler := ConsumerGroupHandler{}
+	defer func() {
+		if err := currConsumerGroup.Close(); err != nil {
+			log.Fatalf("Failed to close Kafka Consumer Group: %v", err)
+		}
+		color.Red("Kafka Consumer Group successfully closed")
+	}()
+	var handler sarama.ConsumerGroupHandler
+	switch topicName {
+	case "value_change":
+		handler = ChangeValueHandler{
+			store: store,
+		}
+	case "debezium.public.items":
+		handler = ItemUpdateHandler{}
+	default:
+		handler = ChangeValueHandler{
+			store: store,
+		}
+	}
 	color.Green("Listening for messages on %s topic...", topicName)
 
 	for {
 		if err := currConsumerGroup.Consume(ctx, []string{topicName}, handler); err != nil {
 			if err.Error() == "context canceled" {
 				color.Red("Stoppped listening to %v topic", topicName)
-				return
-			}
-			color.Red("ERROR: %v", err)
-		}
-	}
-}
-
-func (kc *KafkaCluster) ListenForMessagesFromMulitpleTopics(topics []string, wg *sync.WaitGroup, ctx context.Context) {
-	defer wg.Done()
-	handler := ConsumerGroupHandler{}
-	color.Green("Listening for messages on the given topics...")
-
-	for {
-		if err := kc.Consumer.Consume(ctx, topics, handler); err != nil {
-			if err.Error() == "context canceled" {
-				color.Red("Stoppped listening to given topics")
 				return
 			}
 			color.Red("ERROR: %v", err)

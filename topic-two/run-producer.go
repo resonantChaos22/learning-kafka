@@ -30,26 +30,27 @@ func (e *Executer) RunProducer() {
 	}()
 
 	wgProducer := new(sync.WaitGroup)
-	wgProducer.Add(2)
+	wgProducer.Add(3)
 
 	//	create sample messaging here
 
-	go e.ChangeValue(wgProducer, 1)
-	go e.ChangeValue(wgProducer, 2)
+	go e.ChangeValue(wgProducer, 1, 4.0, 2)
+	go e.ChangeValue(wgProducer, 2, 8.0, 4)
+	go e.ChangeValue(wgProducer, 3, 20.0, 6)
 
 	<-e.ctx.Done()
 
 	wgProducer.Wait()
 }
 
-func (e *Executer) ChangeValue(wg *sync.WaitGroup, itemID int) {
+func (e *Executer) ChangeValue(wg *sync.WaitGroup, itemID int, changeDelta float64, interval int) {
 	defer wg.Done()
 
-	item, err := e.store.GetItem(itemID)
-	if err != nil {
-		log.Fatalf("Error in getting item - %v", err)
-		return
-	}
+	// item, err := e.store.GetItem(itemID)
+	// if err != nil {
+	// 	log.Fatalf("Error in getting item - %v", err)
+	// 	return
+	// }
 
 	startTime := time.Now()
 	netChange := 0.0
@@ -57,32 +58,32 @@ func (e *Executer) ChangeValue(wg *sync.WaitGroup, itemID int) {
 	for {
 		select {
 		case <-e.ctx.Done():
-			color.Red("Stopped sending messaages to topic for Item#%d", item.ID)
+			color.Red("Stopped sending messaages to topic for Item#%d", itemID)
 			return
 		default:
-			change := randomValueChange()
+			change := randomValueChange(float64(changeDelta))
 			netChange += change
 
 			if time.Since(startTime) >= NET_POSITIVE_DELAY {
 				if netChange <= 0 {
-					change += 1.0 - netChange
-					netChange = 1.0
+					change += (changeDelta / 4) - netChange
+					netChange = changeDelta / 4
 				}
 				startTime = time.Now()
 			}
 
-			err := e.cluster.ProduceMessage("change_value", item.ID, change)
+			err := e.cluster.ProduceMessage(VALUE_CHANGE_TOPIC, itemID, change)
 			if err != nil {
 				color.Red("%v", err)
 				continue
 			}
-			time.Sleep(UPDATE_INTERVAL * time.Second)
+			time.Sleep(time.Duration(interval) * time.Second)
 		}
 	}
 }
 
 // randomValueChange generates random positive and negative values
-func randomValueChange() float64 {
+func randomValueChange(changeDelta float64) float64 {
 	// Generates a random float between -2.0 and 2.0
-	return (rand.Float64() * 4.0) - 2.0
+	return (rand.Float64() * changeDelta) - (changeDelta / 2)
 }
