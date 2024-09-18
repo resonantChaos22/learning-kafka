@@ -12,8 +12,7 @@ import (
 // one producer function to create item
 // multiple producer functions to change value of each item
 const (
-	UPDATE_INTERVAL    = 2
-	NET_POSITIVE_DELAY = 5 * time.Minute
+	NET_POSITIVE_DELAY = 2 * time.Minute
 )
 
 func (e *Executer) RunProducer() {

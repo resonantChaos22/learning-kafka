@@ -106,6 +106,11 @@ func (e *Executer) SetupDB() {
 }
 
 func (e *Executer) Setup() {
+	store, err := items.NewPostgresStore()
+	if err != nil {
+		log.Fatalf("Error in creating Postgres Store: %v", err)
+	}
+	e.store = store
 	e.SetupKafka()
 	e.SetupDebezium()
 	e.SetupDB()
@@ -125,27 +130,34 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT)
 
-	wg := new(sync.WaitGroup)
-
 	ctx, cancel := context.WithCancel(context.Background())
-	store, err := items.NewPostgresStore()
-	if err != nil {
-		log.Fatalf("Error in creating Postgres Store: %v", err)
-	}
-	executer := NewExecuter(kc, wg, ctx, store)
+	executer := NewExecuter(kc, nil, ctx, nil)
 	defer cancel()
 
 	switch command {
 	case "setup":
 		executer.Setup()
+		color.Red("Program exited!")
+		return
 	case "run-producer":
+		wg := new(sync.WaitGroup)
+		executer.wg = wg
 		executer.wg.Add(1)
 		go executer.RunProducer()
 	case "run-consumer":
+		wg := new(sync.WaitGroup)
+		executer.wg = wg
 		executer.wg.Add(1)
 		go executer.RunConsumer()
 	case "add-debezium":
 		executer.SetupDebezium()
+		color.Red("Program exited!")
+		return
+	case "stream":
+		wg := new(sync.WaitGroup)
+		executer.wg = wg
+		executer.wg.Add(1)
+		go executer.Stream()
 	default:
 		log.Println("Command Not Found")
 	}
@@ -155,7 +167,9 @@ func main() {
 
 	cancel()
 
-	executer.wg.Wait()
+	if executer.wg != nil {
+		executer.wg.Wait()
+	}
 
 	color.Red("Program Exited")
 }

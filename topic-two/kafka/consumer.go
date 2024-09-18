@@ -2,102 +2,20 @@ package kafka
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
 	"sync"
 	"topic-two/items"
+	"topic-two/kafka/handlers"
 
 	"github.com/IBM/sarama"
 	"github.com/fatih/color"
 )
 
 // ChangeValueHandler handles the messages from "value_change" topic
-type ChangeValueHandler struct {
-	store items.Storage
-}
-
-type DebeziumUpdateMessage struct {
-	After DebeziumAfter `json:"after"`
-	Op    string        `json:"op"`
-}
-
-type DebeziumAfter struct {
-	Id    int     `json:"id"`
-	Name  string  `json:"name"`
-	Value float64 `json:"value"`
-}
-
-func (ChangeValueHandler) Setup(sarama.ConsumerGroupSession) error {
-	return nil
-}
-
-func (ChangeValueHandler) Cleanup(sarama.ConsumerGroupSession) error {
-	return nil
-}
-
-func (handler ChangeValueHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	for message := range claim.Messages() {
-		id, err := strconv.Atoi(string(message.Key))
-		if err != nil {
-			log.Printf("Error in getting id: %v", err)
-			continue
-		}
-		delta, err := strconv.ParseFloat(string(message.Value), 64)
-		if err != nil {
-			log.Printf("Error in getting delta: %v", err)
-			continue
-		}
-
-		item, err := handler.store.GetItem(id)
-		if err != nil {
-			log.Printf("Error in getting the item with id %d: %v", id, err)
-			continue
-		}
-		err = handler.store.UpdateValue(item.ID, item.Value+delta)
-		if err != nil {
-			log.Printf("Error in updating the value for item with id %d: %v", id, err)
-			continue
-		}
-		color.Green("Successfully updated %v's value to %f with a delta of %v", item.Name, item.Value+delta, delta)
-		session.MarkMessage(message, "Processed!")
-	}
-
-	return nil
-}
-
 // ItemUpdateHandler handles the messages in `debezium.public.items` topics coming from debezium
-type ItemUpdateHandler struct {
-	ID int
-}
 
-func (ItemUpdateHandler) Setup(sarama.ConsumerGroupSession) error {
-	return nil
-}
-
-func (ItemUpdateHandler) Cleanup(sarama.ConsumerGroupSession) error {
-	return nil
-}
-
-func (itemHandler ItemUpdateHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	msg := new(DebeziumUpdateMessage)
-	for message := range claim.Messages() {
-		err := json.Unmarshal(message.Value, msg)
-		if err != nil {
-			log.Printf("Error in unmarshalling - %v", err)
-		}
-		if msg.After.Id == itemHandler.ID {
-			color.Cyan("%s", string(message.Key))
-			log.Printf("%v", msg)
-
-			session.MarkMessage(message, "Processed!")
-		}
-	}
-
-	return nil
-}
-
+// Function to create consumer
 func (kc *KafkaCluster) CreateConsumer(groupName ...string) (sarama.ConsumerGroup, error) {
 	config := sarama.NewConfig()
 	config.Version = kc.version
@@ -119,45 +37,66 @@ func (kc *KafkaCluster) CreateConsumer(groupName ...string) (sarama.ConsumerGrou
 	return consumerGroup, nil
 }
 
-func (kc *KafkaCluster) ListenForMessagesFromSingleTopic(topicName string, store items.Storage, wg *sync.WaitGroup, ctx context.Context, id ...int) {
+func (kc *KafkaCluster) ListenForValueChangeMessages(store items.Storage, wg *sync.WaitGroup, ctx context.Context) {
 	defer wg.Done()
-	itemID := 0
-	if len(id) != 0 {
-		itemID = id[0]
-	}
-	log.Printf("HELLO=%d", itemID)
-	currConsumerGroup, err := kc.CreateConsumer(fmt.Sprintf("%s_%d_Consumer", topicName, itemID))
-	log.Println("Created Consumer")
+	groupName := "Value_Change_Consumer"
+	topicName := "value_change"
+	currCG, err := kc.CreateConsumer(groupName)
 	if err != nil {
-		log.Printf("Unable to create consumer group due to error: %v", err)
+		log.Printf("Unable to create consumer group for %s due to error: %v", topicName, err)
 		return
 	}
 	defer func() {
-		if err := currConsumerGroup.Close(); err != nil {
-			log.Fatalf("Failed to close Kafka Consumer Group: %v", err)
+		if err := currCG.Close(); err != nil {
+			log.Fatalf("Failed to close %s: %v", groupName, err)
+			return
 		}
-		color.Red("Kafka Consumer Group successfully closed")
+		color.Red("%s successfully closed.", groupName)
 	}()
-	var handler sarama.ConsumerGroupHandler
-	switch topicName {
-	case "value_change":
-		handler = ChangeValueHandler{
-			store: store,
-		}
-	case "debezium.public.items":
-		handler = ItemUpdateHandler{
-			ID: itemID,
-		}
-		log.Printf("%v", handler)
-	default:
-		handler = ChangeValueHandler{
-			store: store,
-		}
+
+	handler := handlers.ChangeValueHandler{
+		Store: store,
 	}
+
 	color.Green("Listening for messages on %s topic...", topicName)
 
 	for {
-		if err := currConsumerGroup.Consume(ctx, []string{topicName}, handler); err != nil {
+		if err := currCG.Consume(ctx, []string{topicName}, handler); err != nil {
+			if err.Error() == "context canceled" {
+				color.Red("Stoppped listening to %v topic", topicName)
+				return
+			}
+			color.Red("ERROR: %v", err)
+		}
+	}
+}
+
+func (kc *KafkaCluster) ListenForItemChanges(itemID int, valueChan chan<- float64, wg *sync.WaitGroup, ctx context.Context) {
+	defer wg.Done()
+	groupName := fmt.Sprintf("Item-%d_Change_Consumer", itemID)
+	topicName := "debezium.public.items"
+	currCG, err := kc.CreateConsumer(groupName)
+	if err != nil {
+		log.Printf("Unable to create consumer group for %s due to error: %v", topicName, err)
+		return
+	}
+	defer func() {
+		if err := currCG.Close(); err != nil {
+			log.Fatalf("Failed to close %s: %v", groupName, err)
+			return
+		}
+		color.Red("%s successfully closed.", groupName)
+	}()
+
+	handler := handlers.ItemUpdateHandler{
+		ID:        itemID,
+		ValueChan: valueChan,
+	}
+
+	color.Green("Listening for messages on %s topic...", topicName)
+
+	for {
+		if err := currCG.Consume(ctx, []string{topicName}, handler); err != nil {
 			if err.Error() == "context canceled" {
 				color.Red("Stoppped listening to %v topic", topicName)
 				return
