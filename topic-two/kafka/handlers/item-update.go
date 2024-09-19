@@ -3,24 +3,19 @@ package handlers
 import (
 	"encoding/json"
 	"log"
+	"topic-two/items"
 
 	"github.com/IBM/sarama"
 )
 
 type ItemUpdateHandler struct {
 	ID        int
-	ValueChan chan<- float64
+	ValueChan chan<- items.Item
 }
 
 type DebeziumUpdateMessage struct {
-	After DebeziumAfter `json:"after"`
-	Op    string        `json:"op"`
-}
-
-type DebeziumAfter struct {
-	Id    int     `json:"id"`
-	Name  string  `json:"name"`
-	Value float64 `json:"value"`
+	After items.Item `json:"after"`
+	Op    string     `json:"op"`
 }
 
 func (ItemUpdateHandler) Setup(sarama.ConsumerGroupSession) error {
@@ -38,10 +33,10 @@ func (itemHandler ItemUpdateHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 		if err != nil {
 			log.Printf("Error in unmarshalling - %v", err)
 		}
-		if msg.After.Id == itemHandler.ID {
+		if msg.After.ID == itemHandler.ID {
 			// color.Cyan("%s", string(message.Key))
 			// log.Printf("%v", msg)
-			itemHandler.ValueChan <- msg.After.Value
+			itemHandler.ValueChan <- msg.After
 
 			session.MarkMessage(message, "Processed!")
 		}

@@ -71,7 +71,7 @@ func (kc *KafkaCluster) ListenForValueChangeMessages(store items.Storage, wg *sy
 	}
 }
 
-func (kc *KafkaCluster) ListenForItemChanges(itemID int, valueChan chan<- float64, wg *sync.WaitGroup, ctx context.Context) {
+func (kc *KafkaCluster) ListenForItemChanges(itemID int, itemChan chan<- items.Item, wg *sync.WaitGroup, ctx context.Context) {
 	defer wg.Done()
 	groupName := fmt.Sprintf("Item-%d_Change_Consumer", itemID)
 	topicName := "debezium.public.items"
@@ -90,7 +90,7 @@ func (kc *KafkaCluster) ListenForItemChanges(itemID int, valueChan chan<- float6
 
 	handler := handlers.ItemUpdateHandler{
 		ID:        itemID,
-		ValueChan: valueChan,
+		ValueChan: itemChan,
 	}
 
 	color.Green("Listening for messages on %s topic...", topicName)

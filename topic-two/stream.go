@@ -29,12 +29,13 @@ func (e *Executer) Stream() {
 	e.store = store
 
 	// Channel to send values
-	valueChan := make(chan float64)
+	itemChan := make(chan items.Item)
 	wgStream := new(sync.WaitGroup)
 
 	// WebSocket handler
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
 		// Extract itemID from query parameters
+		log.Println("Connected!")
 		itemIDStr := r.URL.Query().Get("itemID")
 		if itemIDStr == "" {
 			http.Error(w, "itemID is required", http.StatusBadRequest)
@@ -56,22 +57,24 @@ func (e *Executer) Stream() {
 
 		// Start listening for changes for the provided itemID
 		wgStream.Add(1)
-		go e.cluster.ListenForItemChanges(itemID, valueChan, wgStream, e.ctx)
+		go e.cluster.ListenForItemChanges(itemID, itemChan, wgStream, e.ctx)
 
 		for {
 			select {
 			case <-e.ctx.Done():
 				wgStream.Wait()
-				close(valueChan)
+				close(itemChan)
 				return
-			case value := <-valueChan:
-				log.Println("Sending value:", value)
+			case item := <-itemChan:
+				if item.ID == itemID {
+					log.Println("Sending value:", item.Value)
 
-				// Send value to WebSocket clients
-				err := conn.WriteJSON(value)
-				if err != nil {
-					log.Println("Failed to send message:", err)
-					return
+					// Send value to WebSocket clients
+					err := conn.WriteJSON(item.Value)
+					if err != nil {
+						log.Println("Failed to send message:", err)
+						return
+					}
 				}
 			}
 		}
