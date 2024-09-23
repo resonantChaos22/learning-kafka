@@ -10,12 +10,13 @@ import (
 
 type ItemUpdateHandler struct {
 	ID        int
-	ValueChan chan<- items.Item
+	ValueChan chan<- DebeziumUpdateMessage
 }
 
 type DebeziumUpdateMessage struct {
-	After items.Item `json:"after"`
-	Op    string     `json:"op"`
+	Item      items.Item `json:"after"`
+	Op        string     `json:"op"`
+	TimeStamp int        `json:"ts_ms"`
 }
 
 func (ItemUpdateHandler) Setup(sarama.ConsumerGroupSession) error {
@@ -27,16 +28,16 @@ func (ItemUpdateHandler) Cleanup(sarama.ConsumerGroupSession) error {
 }
 
 func (itemHandler ItemUpdateHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	msg := new(DebeziumUpdateMessage)
+	var msg DebeziumUpdateMessage
 	for message := range claim.Messages() {
-		err := json.Unmarshal(message.Value, msg)
+		err := json.Unmarshal(message.Value, &msg)
 		if err != nil {
 			log.Printf("Error in unmarshalling - %v", err)
 		}
-		if msg.After.ID == itemHandler.ID {
+		if msg.Item.ID == itemHandler.ID {
 			// color.Cyan("%s", string(message.Key))
 			// log.Printf("%v", msg)
-			itemHandler.ValueChan <- msg.After
+			itemHandler.ValueChan <- msg
 
 			session.MarkMessage(message, "Processed!")
 		}

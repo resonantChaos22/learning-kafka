@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"topic-two/items"
+	"topic-two/kafka/handlers"
 
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
@@ -15,6 +16,12 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
+}
+
+type StreamMessage struct {
+	Value     float64 `json:"value"`
+	Timestamp int     `json:"time"`
+	ID        int     `json:"id"`
 }
 
 func (e *Executer) Stream() {
@@ -28,13 +35,10 @@ func (e *Executer) Stream() {
 	}
 	e.store = store
 
-	// Channel to send values
-	itemChan := make(chan items.Item)
+	itemChan := make(chan handlers.DebeziumUpdateMessage)
 	wgStream := new(sync.WaitGroup)
 
-	// WebSocket handler
 	http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
-		// Extract itemID from query parameters
 		log.Println("Connected!")
 		itemIDStr := r.URL.Query().Get("itemID")
 		if itemIDStr == "" {
@@ -55,7 +59,6 @@ func (e *Executer) Stream() {
 		}
 		defer conn.Close()
 
-		// Start listening for changes for the provided itemID
 		wgStream.Add(1)
 		go e.cluster.ListenForItemChanges(itemID, itemChan, wgStream, e.ctx)
 
@@ -65,14 +68,15 @@ func (e *Executer) Stream() {
 				wgStream.Wait()
 				close(itemChan)
 				return
-			case item := <-itemChan:
-				if item.ID == itemID {
-					log.Println("Sending value:", item.Value)
+			case msg := <-itemChan:
+				if msg.Item.ID == itemID {
+					log.Println("Sending value:", msg.Item.Value)
 
-					// Send value to WebSocket clients
-					err := conn.WriteJSON(item.Value)
+					err := conn.WriteJSON(NewStreamMessage(msg.Item.ID, msg.TimeStamp, msg.Item.Value))
 					if err != nil {
 						log.Println("Failed to send message:", err)
+						wgStream.Wait()
+						close(itemChan)
 						return
 					}
 				}
@@ -80,38 +84,6 @@ func (e *Executer) Stream() {
 		}
 	})
 
-	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("pong"))
-	})
-
-	http.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
-		// Upgrade HTTP to WebSocket
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Println("WebSocket upgrade failed:", err)
-			return
-		}
-		defer conn.Close()
-
-		// Example: Read and respond to WebSocket messages
-		for {
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				log.Println("Error reading WebSocket message:", err)
-				break
-			}
-			log.Printf("Received: %s", message)
-
-			// Send a response back to the client
-			err = conn.WriteMessage(websocket.TextMessage, []byte("Hello, Client!"))
-			if err != nil {
-				log.Println("Error writing WebSocket message:", err)
-				break
-			}
-		}
-	})
-
-	// Start WebSocket server
 	server := &http.Server{Addr: ":8001"}
 
 	go func() {
@@ -121,9 +93,16 @@ func (e *Executer) Stream() {
 		}
 	}()
 
-	// Graceful shutdown when context is canceled
 	<-e.ctx.Done()
 	log.Println("Shutting down WebSocket server...")
 	server.Shutdown(e.ctx)
 	wgStream.Wait()
+}
+
+func NewStreamMessage(id, timestamp int, value float64) StreamMessage {
+	return StreamMessage{
+		ID:        id,
+		Value:     value,
+		Timestamp: timestamp,
+	}
 }

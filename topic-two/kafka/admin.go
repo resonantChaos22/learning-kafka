@@ -93,7 +93,7 @@ func (kc *KafkaCluster) DeleteTopic(topicName string) error {
 
 func (kc *KafkaCluster) createDefaultConfigEntries() map[string]*string {
 	return map[string]*string{
-		"retention.ms": getStringPtr("300000"),
+		"retention.ms": getStringPtr("3000000"),
 	}
 }
 

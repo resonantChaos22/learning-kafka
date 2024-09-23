@@ -111,7 +111,7 @@ func (e *Executer) Setup() {
 		log.Fatalf("Error in creating Postgres Store: %v", err)
 	}
 	e.store = store
-	e.SetupKafka()
+	// e.SetupKafka()
 	e.SetupDebezium()
 	e.SetupDB()
 }
