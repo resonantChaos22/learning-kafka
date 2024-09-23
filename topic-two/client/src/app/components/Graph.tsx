@@ -2,7 +2,11 @@
 
 import moment from "moment";
 import React, { useEffect, useState, useRef } from "react";
-import { LineChart, XAxis, YAxis, CartesianGrid, Line } from "recharts";
+import { Chart as ChartJS, LineElement, CategoryScale, LinearScale, PointElement, TimeScale, ChartData, TimeSeriesScale } from 'chart.js';
+import { Line } from "react-chartjs-2";
+import 'chartjs-adapter-moment'
+
+ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement, TimeScale, TimeSeriesScale);
 type DataPoint = {
   time: number;
   value: number;
@@ -12,25 +16,17 @@ type DataPoint = {
 
 const WebSocketChart: React.FC = () => {
   const [data, setData] = useState<DataPoint[]>([]);
+  const [chartData, setChartData] = useState<ChartData<'line', number[], string>>({
+    labels: [],
+    datasets: [{
+      label: 'Value Over Time',
+      data: [],
+      fill: false,
+      borderColor: 'white',
+      tension: 0.1
+    }]
+  })
   const ws = useRef<WebSocket | null>(null);
-
-  // Function to generate Y-axis ticks based on first value
-  const generateYAxisTicks = (minValue: number) => {
-    const ticks = [];
-    const startTick = Math.floor(minValue / 25) * 25; // Round to the nearest 50 below
-    for (let i = startTick - 25; i <= minValue + 80; i += 25) {
-      ticks.push(i);
-    }
-    return ticks;
-  };
-
-  // Get current time and generate X-axis labels
-  const currentTime = moment();
-  const generateXAxisTicks = () => {
-    return data.map((_, index) =>
-      currentTime.clone().add(index, "minutes").format("HH:mm:ss")
-    );
-  };
 
   useEffect(() => {
     // Create WebSocket connection
@@ -51,8 +47,38 @@ const WebSocketChart: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    console.log(data);
+    console.log({data})
+    let newData: DataPoint;
+    if (data.length) {
+      newData = data[data.length - 1];
+    } else {
+      newData = {
+        value: 500,
+        ts: moment().format("HH:mm:ss"),
+        time: moment().unix(),
+        id: 1
+      }
+    }
+    setChartData((prevData) => {
+      const newLabels = [...(prevData.labels || []), moment(newData.time).format("HH:mm:ss")];
+      const newValues = [...prevData.datasets[0].data, newData.value];
+
+      return {
+        ...prevData,
+        labels: newLabels,
+        datasets: [
+          {
+            ...prevData.datasets[0],
+            data: newValues
+          }
+        ]
+      }
+    })
   }, [data]);
+
+  useEffect(() => {
+    console.log({chartData})
+  }, [chartData])
 
   return (
     <div>
@@ -63,16 +89,19 @@ const WebSocketChart: React.FC = () => {
             <span> | Value: {dataPoint.value}</span>
           </div>
         ))} */}
-        <LineChart width={1200} height={600} data={data}>
-          <XAxis dataKey="ts" ticks={generateXAxisTicks()} />
-          <YAxis
-            domain={data[0] ? [data[0].value - 80, "auto"] : [500 - 80, "auto"]}
-            ticks={generateYAxisTicks(data[0] ? data[0].value : 500)}
-            tickCount={10}
-          />
-          <CartesianGrid stroke="#eee" strokeDasharray="5 5" />
-          <Line type="monotone" dataKey="value" stroke="#8884d8" />
-        </LineChart>
+        <Line width={1000} height={800} data={chartData} options={{
+          scales: {
+            x: {
+              type: "timeseries",
+              time: {
+                unit: "second"
+              }
+            },
+            y: {
+              beginAtZero: false
+            }
+          }
+        }} />
       </div>
       {/* Your LineChart or other UI components can be added here */}
     </div>

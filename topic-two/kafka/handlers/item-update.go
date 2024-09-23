@@ -39,7 +39,7 @@ func (itemHandler ItemUpdateHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 			// log.Printf("%v", msg)
 			itemHandler.ValueChan <- msg
 
-			session.MarkMessage(message, "Processed!")
+			// session.MarkMessage(message, "Processed!")
 		}
 	}
 
