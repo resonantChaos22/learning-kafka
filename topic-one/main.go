@@ -124,6 +124,7 @@ func main() {
 	switch command {
 	case "setup":
 		SetupKafka(kc)
+		return
 	case "run-producer":
 		wg.Add(1)
 		go RunProducer(kc, wg, ctx)
@@ -132,6 +133,7 @@ func main() {
 		go RunConsumer(kc, wg, ctx)
 	default:
 		log.Println("Command Not Found")
+		return
 	}
 
 	sig := <-sigChan
