@@ -15,7 +15,6 @@ func (kc *KafkaCluster) CheckDebeziumConnector(url string, args ...string) (bool
 	} else {
 		kc.DebeziumConnector = "default_connector"
 	}
-	fmt.Printf("%s/%s", url, kc.DebeziumConnector)
 	resp, err := http.Get(fmt.Sprintf("%s/%s", url, kc.DebeziumConnector))
 	if err != nil {
 		return false, err
