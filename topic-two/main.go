@@ -95,7 +95,7 @@ func (e *Executer) SetupDB() {
 		log.Fatalf("Error in creating item table: %v", err)
 	}
 
-	items := []*items.Item{{Name: "Spotify", Value: 500.0}, {Name: "Reddit", Value: 800.0}, {Name: "Netflix", Value: 200.0}}
+	items := []*items.Item{{Name: "ItemA", Value: 500.0}, {Name: "ItemB", Value: 550.0}, {Name: "ItemC", Value: 450.0}}
 
 	for _, item := range items {
 		err = e.store.CreateItem(item)
@@ -111,8 +111,8 @@ func (e *Executer) Setup() {
 		log.Fatalf("Error in creating Postgres Store: %v", err)
 	}
 	e.store = store
-	// e.SetupKafka()
 	e.SetupDebezium()
+	e.SetupKafka()
 	e.SetupDB()
 }
 

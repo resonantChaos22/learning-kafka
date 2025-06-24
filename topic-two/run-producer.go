@@ -29,13 +29,16 @@ func (e *Executer) RunProducer() {
 	}()
 
 	wgProducer := new(sync.WaitGroup)
-	wgProducer.Add(3)
+	wgProducer.Add(6)
 
 	//	create sample messaging here
 
-	go e.ChangeValue(wgProducer, 1, 4.0, 2)
-	go e.ChangeValue(wgProducer, 2, 8.0, 4)
-	go e.ChangeValue(wgProducer, 3, 20.0, 6)
+	go e.ChangeValue(wgProducer, 1, 30.0, 1)
+	go e.ChangeValue(wgProducer, 2, 25.0, 2)
+	go e.ChangeValue(wgProducer, 3, 40.0, 3)
+	go e.ChangeValue(wgProducer, 1, 60.0, 5)
+	go e.ChangeValue(wgProducer, 2, 80.0, 6)
+	go e.ChangeValue(wgProducer, 3, 50.0, 7)
 
 	<-e.ctx.Done()
 

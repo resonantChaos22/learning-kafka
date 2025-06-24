@@ -34,7 +34,7 @@ func (itemHandler ItemUpdateHandler) ConsumeClaim(session sarama.ConsumerGroupSe
 		if err != nil {
 			log.Printf("Error in unmarshalling - %v", err)
 		}
-		if msg.Item.ID == itemHandler.ID {
+		if msg.Item.ID == itemHandler.ID || itemHandler.ID == 0 {
 			// color.Cyan("%s", string(message.Key))
 			// log.Printf("%v", msg)
 			itemHandler.ValueChan <- msg

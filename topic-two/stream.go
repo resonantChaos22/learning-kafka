@@ -69,7 +69,7 @@ func (e *Executer) Stream() {
 				close(itemChan)
 				return
 			case msg := <-itemChan:
-				if msg.Item.ID == itemID {
+				if msg.Item.ID == itemID || itemID == 0 {
 					log.Println("Sending value:", msg.Item.Value)
 
 					err := conn.WriteJSON(NewStreamMessage(msg.Item.ID, msg.TimeStamp, msg.Item.Value))
