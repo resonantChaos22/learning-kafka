@@ -31,6 +31,16 @@ func (store *PostgresStore) UpdateValue(id int, value float64) error {
 	return err
 }
 
+func (store *PostgresStore) ApplyDelta(id int, delta float64) (float64, error) {
+	query := `UPDATE items SET value = ROUND((value + $1)::numeric, 2) WHERE id=$2 RETURNING value`
+	var updatedValue float64
+	err := store.db.QueryRow(context.Background(), query, delta, id).Scan(&updatedValue)
+	if err != nil {
+		return 0, err
+	}
+	return updatedValue, nil
+}
+
 func (store *PostgresStore) UpdateItem(item *Item) error {
 	query := `UPDATE items SET name=$1, value=$2 WHERE id=$3`
 
@@ -63,7 +73,6 @@ func (store *PostgresStore) GetItem(id int) (*Item, error) {
 	query := `SELECT * FROM items WHERE id=$1`
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	store.LogPoolStats()
 	rows, err := store.db.Query(ctx, query, id)
 	if err != nil {
 		return nil, err
