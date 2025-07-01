@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log"
+	"os"
 	"sync"
 	"time"
 	"topic-two/items"
@@ -54,11 +55,14 @@ func (e *Executer) SetupKafka() {
 
 	func() {
 		startTime := time.Now() // Capture the start time
-
 		for {
+			if time.Since(startTime) > 30*time.Second {
+				color.Red("Unable to list topics. There's some issue")
+				os.Exit(1)
+			}
 			checkTime := time.Now()
 			err := e.cluster.ListTopics()
-			color.Magenta("Took %dms to list topics", time.Since(checkTime).Milliseconds())
+			color.Magenta("Took %dms to try to list topics", time.Since(checkTime).Milliseconds())
 			if err == nil {
 				elapsed := time.Since(startTime) // Calculate elapsed time
 				color.Cyan("It took %d milliseconds to achieve sync", elapsed.Milliseconds())
@@ -86,7 +90,13 @@ func (e *Executer) SetupDebezium() {
 }
 
 func (e *Executer) SetupDB() {
-	err := e.store.CreateItemTable()
+	store, err := items.NewPostgresStore()
+	if err != nil {
+		log.Fatalf("Error in creating Postgres Store: %v", err)
+	}
+	e.store = store
+
+	err = e.store.CreateItemTable()
 	if err != nil {
 		log.Fatalf("Error in creating item table: %v", err)
 	}
@@ -102,11 +112,6 @@ func (e *Executer) SetupDB() {
 }
 
 func (e *Executer) Setup() {
-	store, err := items.NewPostgresStore()
-	if err != nil {
-		log.Fatalf("Error in creating Postgres Store: %v", err)
-	}
-	e.store = store
 	e.SetupKafka()
 	e.SetupDB()
 	e.SetupDebezium()
