@@ -57,8 +57,16 @@ func main() {
 		log.Println("Command Not Found")
 	}
 
-	sig := <-sigChan
-	color.Red("Received signal: %v, initiating graceful shutdown.", sig)
+	select {
+	case sig := <-sigChan:
+		color.Red("Received signal: %v, initiating graceful shutdown.", sig)
+	case err := <-executer.GetErrors():
+		if err != nil {
+			color.Red("Received error: %s, initiating graceful shutdown.", err.Error())
+		} else {
+			color.Yellow("Error channel closed, initiating graceful shutdown.")
+		}
+	}
 
 	cancel()
 

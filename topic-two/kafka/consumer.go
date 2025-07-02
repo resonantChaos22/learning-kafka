@@ -41,7 +41,7 @@ func (kc *KafkaCluster) CreateConsumer(groupName ...string) (sarama.ConsumerGrou
 	return consumerGroup, nil
 }
 
-func (kc *KafkaCluster) ListenForValueChangeMessages(store items.Storage, wg *sync.WaitGroup, ctx context.Context) {
+func (kc *KafkaCluster) ListenForValueChangeMessages(store items.Storage, wg *sync.WaitGroup, ctx context.Context, errChan chan error) {
 	defer wg.Done()
 	groupName := "Value_Change_Consumer"
 	topicName := "value_change"
@@ -52,7 +52,7 @@ func (kc *KafkaCluster) ListenForValueChangeMessages(store items.Storage, wg *sy
 	}
 	defer func() {
 		if err := currCG.Close(); err != nil {
-			log.Fatalf("Failed to close %s: %v", groupName, err)
+			errChan <- fmt.Errorf("failed to close %s: %v", groupName, err)
 			return
 		}
 		color.Red("%s successfully closed.", groupName)
@@ -75,11 +75,11 @@ func (kc *KafkaCluster) ListenForValueChangeMessages(store items.Storage, wg *sy
 	}
 }
 
-func (kc *KafkaCluster) ListenForAllItemChanges(broadcast *ItemsBroadcast, wg *sync.WaitGroup, ctx context.Context) {
-	kc.ListenForItemChanges(broadcast, wg, ctx, 0)
+func (kc *KafkaCluster) ListenForAllItemChanges(broadcast *ItemsBroadcast, wg *sync.WaitGroup, ctx context.Context, errChan chan error) {
+	kc.ListenForItemChanges(broadcast, wg, ctx, 0, errChan)
 }
 
-func (kc *KafkaCluster) ListenForItemChanges(broadcast *ItemsBroadcast, wg *sync.WaitGroup, ctx context.Context, itemID int) {
+func (kc *KafkaCluster) ListenForItemChanges(broadcast *ItemsBroadcast, wg *sync.WaitGroup, ctx context.Context, itemID int, errChan chan error) {
 	defer wg.Done()
 	groupName := fmt.Sprintf("Item-%d_Change_Consumer", itemID)
 	topicName := "debezium.public.items"
@@ -96,7 +96,7 @@ func (kc *KafkaCluster) ListenForItemChanges(broadcast *ItemsBroadcast, wg *sync
 	}
 	defer func() {
 		if err := currCG.Close(); err != nil {
-			log.Fatalf("Failed to close %s: %v", groupName, err)
+			errChan <- fmt.Errorf("failed to close %s: %v", groupName, err)
 			return
 		}
 		color.Red("%s successfully closed.", groupName)

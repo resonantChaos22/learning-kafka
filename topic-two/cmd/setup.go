@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ type Executer struct {
 	wg      *sync.WaitGroup
 	ctx     context.Context
 	store   items.Storage
+	errChan chan error
 }
 
 func (e *Executer) SetWg(wg *sync.WaitGroup) {
@@ -37,19 +39,19 @@ func (e *Executer) SetupKafka() {
 	err := e.cluster.CreateAdmin()
 
 	if err != nil {
-		log.Fatalf("Failed to create Kafka ClusterAdmin: %v\n", err)
+		e.errChan <- fmt.Errorf("failed to create kafka cluster admin: %v", err)
 	}
 
 	defer func() {
 		if err := e.cluster.Admin.Close(); err != nil {
-			log.Fatalf("Failed to close Kafka ClusterAdmin: %v", err)
+			e.errChan <- fmt.Errorf("failed to closekafka cluster admin: %v", err)
 		}
 		color.Red("Kafka ClusterAdmin successfully closed!")
 	}()
 
 	err = e.cluster.CreateTopic(VALUE_CHANGE_TOPIC, 3, 2)
 	if err != nil {
-		log.Fatalf("Failed to create the topic: %v", err)
+		e.errChan <- fmt.Errorf("failed to create the topic: %v", err)
 	}
 
 	func() {
@@ -75,13 +77,13 @@ func (e *Executer) SetupKafka() {
 func (e *Executer) SetupDebezium() {
 	isConnectorPresent, err := e.cluster.CheckDebeziumConnector(DEBEZIUM_CONNECT_URL, "pg_connector")
 	if err != nil {
-		log.Fatalf("Error in checking presence of connector - %v", err)
+		e.errChan <- fmt.Errorf("error in checking presence of connector - %v", err)
 	}
 
 	if !isConnectorPresent {
 		err = e.cluster.CreateDebeziumConnector(DEBEZIUM_CONNECT_URL)
 		if err != nil {
-			log.Fatalf("Error in creating the connector - %v", err)
+			e.errChan <- fmt.Errorf("error in creating the connector - %v", err)
 		}
 	}
 
@@ -91,13 +93,13 @@ func (e *Executer) SetupDebezium() {
 func (e *Executer) SetupDB() {
 	store, err := items.NewPostgresStore()
 	if err != nil {
-		log.Fatalf("Error in creating Postgres Store: %v", err)
+		e.errChan <- fmt.Errorf("error in creating postgres store: %v", err)
 	}
 	e.store = store
 
 	err = e.store.CreateItemTable()
 	if err != nil {
-		log.Fatalf("Error in creating item table: %v", err)
+		e.errChan <- fmt.Errorf("error in creating item table: %v", err)
 	}
 
 	items := []*items.Item{{Name: "ItemA", Value: 500.0}, {Name: "ItemB", Value: 550.0}, {Name: "ItemC", Value: 450.0}}
@@ -105,9 +107,13 @@ func (e *Executer) SetupDB() {
 	for _, item := range items {
 		err = e.store.CreateItem(item)
 		if err != nil {
-			log.Fatalf("Error in adding item to table: %v", err)
+			e.errChan <- fmt.Errorf("error in adding item to table: %v", err)
 		}
 	}
+}
+
+func (e *Executer) GetErrors() chan error {
+	return e.errChan
 }
 
 func (e *Executer) Setup() {
@@ -122,5 +128,6 @@ func NewExecuter(cluster *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Co
 		wg:      wg,
 		ctx:     ctx,
 		store:   store,
+		errChan: make(chan error, 10),
 	}
 }

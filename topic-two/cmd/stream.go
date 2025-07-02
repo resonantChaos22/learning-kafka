@@ -1,12 +1,12 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
-	"topic-two/items"
 	"topic-two/kafka"
 
 	"github.com/fatih/color"
@@ -30,19 +30,13 @@ func (e *Executer) Stream() {
 
 	color.Green("Starting Stream...")
 
-	store, err := items.NewPostgresStore()
-	if err != nil {
-		log.Fatalf("Error in creating Postgres Store: %v", err)
-	}
-	e.store = store
-
 	wgStream := new(sync.WaitGroup)
 	numConn := 0
 
 	broadcast := kafka.NewItemsBroadcast()
 
 	wgStream.Add(1)
-	go e.cluster.ListenForAllItemChanges(broadcast, wgStream, e.ctx)
+	go e.cluster.ListenForAllItemChanges(broadcast, wgStream, e.ctx, e.errChan)
 
 	http.HandleFunc("/stream", e.streamHandler(&numConn, wgStream, broadcast))
 
@@ -51,7 +45,7 @@ func (e *Executer) Stream() {
 	go func() {
 		color.Green("WebSocket server started on :8001")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("WebSocket server failed: %v", err)
+			e.errChan <- fmt.Errorf("websocket server failed: %v", err)
 		}
 	}()
 
