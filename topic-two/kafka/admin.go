@@ -16,6 +16,7 @@ type KafkaCluster struct {
 	Admin             sarama.ClusterAdmin
 	Producer          sarama.SyncProducer
 	Consumer          sarama.ConsumerGroup
+	ConsumerGroups    []string
 	DebeziumConnector string
 }
 

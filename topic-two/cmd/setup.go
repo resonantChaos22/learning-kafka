@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"log"
-	"os"
 	"sync"
 	"time"
 	"topic-two/items"
@@ -58,7 +57,7 @@ func (e *Executer) SetupKafka() {
 		for {
 			if time.Since(startTime) > 30*time.Second {
 				color.Red("Unable to list topics. There's some issue")
-				os.Exit(1)
+				return
 			}
 			checkTime := time.Now()
 			err := e.cluster.ListTopics()

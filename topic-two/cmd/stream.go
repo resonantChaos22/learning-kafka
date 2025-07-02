@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 	"topic-two/items"
-	"topic-two/kafka/handlers"
+	"topic-two/kafka"
 
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
@@ -35,11 +36,36 @@ func (e *Executer) Stream() {
 	}
 	e.store = store
 
-	itemChan := make(chan handlers.DebeziumUpdateMessage)
 	wgStream := new(sync.WaitGroup)
+	numConn := 0
 
-	http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Connected!")
+	broadcast := kafka.NewItemsBroadcast()
+
+	wgStream.Add(1)
+	go e.cluster.ListenForAllItemChanges(broadcast, wgStream, e.ctx)
+
+	http.HandleFunc("/stream", e.streamHandler(&numConn, wgStream, broadcast))
+
+	server := &http.Server{Addr: ":8001"}
+
+	go func() {
+		color.Green("WebSocket server started on :8001")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("WebSocket server failed: %v", err)
+		}
+	}()
+
+	<-e.ctx.Done()
+	color.Red("Shutting down WebSocket server...")
+	server.Shutdown(e.ctx)
+	wgStream.Wait()
+}
+
+func (e *Executer) streamHandler(numConn *int, wgStream *sync.WaitGroup, broadcast *kafka.ItemsBroadcast) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := *numConn + 1
+		*numConn++
+		color.Green("User#%d Connected!", id)
 		itemIDStr := r.URL.Query().Get("itemID")
 		if itemIDStr == "" {
 			http.Error(w, "itemID is required", http.StatusBadRequest)
@@ -52,6 +78,8 @@ func (e *Executer) Stream() {
 			return
 		}
 
+		itemChan := broadcast.Register(itemID)
+
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Println("Failed to upgrade to WebSocket:", err)
@@ -60,43 +88,50 @@ func (e *Executer) Stream() {
 		defer conn.Close()
 
 		wgStream.Add(1)
-		go e.cluster.ListenForItemChanges(itemID, itemChan, wgStream, e.ctx)
+		retries := 1
+
+		closeConn := func() {
+			broadcast.Unregister(itemID, itemChan)
+			color.Red("Closing connection for User#%d", id)
+			wgStream.Done()
+		}
 
 		for {
 			select {
 			case <-e.ctx.Done():
-				wgStream.Wait()
-				close(itemChan)
+				closeConn()
 				return
-			case msg := <-itemChan:
+			case msg, ok := <-itemChan:
+				if !ok {
+					log.Printf("Channel closed, exiting stream loop for User#%d\n", id)
+					wgStream.Done()
+					return
+				}
 				if msg.Item.ID == itemID || itemID == 0 {
-					log.Println("Sending value:", msg.Item.Value)
 
 					err := conn.WriteJSON(NewStreamMessage(msg.Item.ID, msg.TimeStamp, msg.Item.Value))
 					if err != nil {
-						log.Println("Failed to send message:", err)
-						wgStream.Wait()
-						close(itemChan)
+						color.Green("Retry#%d to send message to User#%d...\n", retries, id)
+						retries++
+						time.Sleep(1 * time.Second)
+						if retries <= 5 {
+							continue
+						}
+						color.Red("Failed to send message, closing connection for User#%d: %v", id, err)
+						closeConn()
 						return
+					} else {
+						if retries > 1 {
+							color.Green("Regained Connection for User#%d!", id)
+						}
+						retries = 1
 					}
+
+					color.HiBlue("Sending value for User#%d and %s :%f\n", id, msg.Item.Name, msg.Item.Value)
 				}
 			}
 		}
-	})
-
-	server := &http.Server{Addr: ":8001"}
-
-	go func() {
-		color.Green("WebSocket server started on :8001")
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("WebSocket server failed: %v", err)
-		}
-	}()
-
-	<-e.ctx.Done()
-	log.Println("Shutting down WebSocket server...")
-	server.Shutdown(e.ctx)
-	wgStream.Wait()
+	}
 }
 
 func NewStreamMessage(id, timestamp int, value float64) StreamMessage {
