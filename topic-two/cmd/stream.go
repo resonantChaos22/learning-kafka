@@ -46,6 +46,7 @@ func (e *Executer) Stream() {
 		color.Green("WebSocket server started on :8001")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			e.errChan <- fmt.Errorf("websocket server failed: %v", err)
+			return
 		}
 	}()
 
@@ -108,7 +109,7 @@ func (e *Executer) streamHandler(numConn *int, wgStream *sync.WaitGroup, broadca
 						color.Green("Retry#%d to send message to User#%d...\n", retries, id)
 						retries++
 						time.Sleep(1 * time.Second)
-						if retries <= 5 {
+						if retries <= NUM_RETRIES {
 							continue
 						}
 						color.Red("Failed to send message, closing connection for User#%d: %v", id, err)

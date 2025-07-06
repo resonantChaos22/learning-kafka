@@ -19,11 +19,13 @@ func (e *Executer) RunProducer() {
 	err := e.cluster.CreateProducer()
 	if err != nil {
 		e.errChan <- fmt.Errorf("failed to create kafka producer: %v", err)
+		return
 	}
 	defer e.wg.Done()
 	defer func() {
 		if err := e.cluster.Producer.Close(); err != nil {
 			e.errChan <- fmt.Errorf("failed to close kafka producer: %v", err)
+			return
 		}
 		color.Red("Kafka Producer successfully closed")
 	}()

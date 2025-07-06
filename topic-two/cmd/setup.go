@@ -16,6 +16,10 @@ const (
 	DEBEZIUM_CONNECT_URL = "http://localhost:8083/connectors"
 	VALUE_CHANGE_TOPIC   = "value_change"
 	DEBEZIUM_ITEM_TOPIC  = "debezium.public.items"
+	NUM_PARTIIONS        = 3
+	REPLICATION_FACTOR   = 2
+	CHANNEL_BUFFER       = 10
+	NUM_RETRIES          = 5
 )
 
 type Executer struct {
@@ -40,25 +44,28 @@ func (e *Executer) SetupKafka() {
 
 	if err != nil {
 		e.errChan <- fmt.Errorf("failed to create kafka cluster admin: %v", err)
+		return
 	}
 
 	defer func() {
 		if err := e.cluster.Admin.Close(); err != nil {
 			e.errChan <- fmt.Errorf("failed to closekafka cluster admin: %v", err)
+			return
 		}
 		color.Red("Kafka ClusterAdmin successfully closed!")
 	}()
 
-	err = e.cluster.CreateTopic(VALUE_CHANGE_TOPIC, 3, 2)
+	err = e.cluster.CreateTopic(VALUE_CHANGE_TOPIC, NUM_PARTIIONS, REPLICATION_FACTOR)
 	if err != nil {
 		e.errChan <- fmt.Errorf("failed to create the topic: %v", err)
+		return
 	}
 
 	func() {
 		startTime := time.Now() // Capture the start time
 		for {
 			if time.Since(startTime) > 30*time.Second {
-				color.Red("Unable to list topics. There's some issue")
+				e.errChan <- fmt.Errorf("unable to list topics. there's some issue")
 				return
 			}
 			checkTime := time.Now()
@@ -78,12 +85,14 @@ func (e *Executer) SetupDebezium() {
 	isConnectorPresent, err := e.cluster.CheckDebeziumConnector(DEBEZIUM_CONNECT_URL, "pg_connector")
 	if err != nil {
 		e.errChan <- fmt.Errorf("error in checking presence of connector - %v", err)
+		return
 	}
 
 	if !isConnectorPresent {
 		err = e.cluster.CreateDebeziumConnector(DEBEZIUM_CONNECT_URL)
 		if err != nil {
 			e.errChan <- fmt.Errorf("error in creating the connector - %v", err)
+			return
 		}
 	}
 
@@ -94,12 +103,14 @@ func (e *Executer) SetupDB() {
 	store, err := items.NewPostgresStore()
 	if err != nil {
 		e.errChan <- fmt.Errorf("error in creating postgres store: %v", err)
+		return
 	}
 	e.store = store
 
 	err = e.store.CreateItemTable()
 	if err != nil {
 		e.errChan <- fmt.Errorf("error in creating item table: %v", err)
+		return
 	}
 
 	items := []*items.Item{{Name: "ItemA", Value: 500.0}, {Name: "ItemB", Value: 550.0}, {Name: "ItemC", Value: 450.0}}
@@ -108,12 +119,16 @@ func (e *Executer) SetupDB() {
 		err = e.store.CreateItem(item)
 		if err != nil {
 			e.errChan <- fmt.Errorf("error in adding item to table: %v", err)
+			return
 		}
 	}
 }
 
-func (e *Executer) GetErrors() chan error {
+func (e *Executer) GetErrors() <-chan error {
 	return e.errChan
+}
+func (e *Executer) CloseErrorChannel() {
+	close(e.errChan)
 }
 
 func (e *Executer) Setup() {
@@ -128,6 +143,6 @@ func NewExecuter(cluster *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Co
 		wg:      wg,
 		ctx:     ctx,
 		store:   store,
-		errChan: make(chan error, 10),
+		errChan: make(chan error, CHANNEL_BUFFER),
 	}
 }

@@ -69,6 +69,7 @@ func main() {
 	}
 
 	cancel()
+	executer.CloseErrorChannel()
 
 	executer.Wait()
 

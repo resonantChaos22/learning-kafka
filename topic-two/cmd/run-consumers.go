@@ -13,6 +13,7 @@ func (e *Executer) RunConsumer() {
 	store, err := items.NewPostgresStore()
 	if err != nil {
 		e.errChan <- fmt.Errorf("error in creating postgres store: %v", err)
+		return
 	}
 	e.store = store
 

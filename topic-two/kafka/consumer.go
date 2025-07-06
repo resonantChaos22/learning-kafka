@@ -13,6 +13,10 @@ import (
 	"github.com/fatih/color"
 )
 
+const (
+	CHANNEL_BUFFER = 10
+)
+
 // ChangeValueHandler handles the messages from "value_change" topic
 // ItemUpdateHandler handles the messages in `debezium.public.items` topics coming from debezium
 
@@ -102,7 +106,7 @@ func (kc *KafkaCluster) ListenForItemChanges(broadcast *ItemsBroadcast, wg *sync
 		color.Red("%s successfully closed.", groupName)
 	}()
 
-	valueChan := make(chan handlers.DebeziumUpdateMessage, 10)
+	valueChan := make(chan handlers.DebeziumUpdateMessage, CHANNEL_BUFFER)
 
 	handler := handlers.ItemUpdateHandler{
 		ID:        itemID,
@@ -137,7 +141,7 @@ type ItemsBroadcast struct {
 func (ib *ItemsBroadcast) Register(id int) chan handlers.DebeziumUpdateMessage {
 	ib.mu.Lock()
 	defer ib.mu.Unlock()
-	itemChan := make(chan handlers.DebeziumUpdateMessage, 10)
+	itemChan := make(chan handlers.DebeziumUpdateMessage, CHANNEL_BUFFER)
 	ib.subscribers[id] = append(ib.subscribers[id], itemChan)
 	return itemChan
 }
