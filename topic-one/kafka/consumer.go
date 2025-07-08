@@ -38,11 +38,9 @@ func (kc *KafkaCluster) CreateConsumer() error {
 	config := sarama.NewConfig()
 	config.Version = kc.version
 	config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
-	// config.Consumer.Group.Session.Timeout = time.Millisecond * 30
-	// config.Consumer.Group.Heartbeat.Interval = time.Millisecond * 2
 
-	group := "OrderCG"
-	consumerGroup, err := sarama.NewConsumerGroup(kc.brokers, group, config)
+	groupName := "OrderCG"
+	consumerGroup, err := sarama.NewConsumerGroup(kc.brokers, groupName, config)
 	if err != nil {
 		return err
 	}

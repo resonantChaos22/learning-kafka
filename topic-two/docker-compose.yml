@@ -110,7 +110,7 @@ services:
       - kafka-network
 
   connector:
-    image: debezium/connect:latest
+    image: debezium/connect:3.0.0.Final
     container_name: kafka_connect_with_debezium
     networks:
       - kafka-network

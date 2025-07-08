@@ -8,6 +8,7 @@ import (
 	"github.com/fatih/color"
 )
 
+// TODO:	Maybe break KafkaCluster into smaller parts?
 type KafkaCluster struct {
 	brokers           []string
 	version           sarama.KafkaVersion
@@ -15,6 +16,7 @@ type KafkaCluster struct {
 	Admin             sarama.ClusterAdmin
 	Producer          sarama.SyncProducer
 	Consumer          sarama.ConsumerGroup
+	ConsumerGroups    []string
 	DebeziumConnector string
 }
 

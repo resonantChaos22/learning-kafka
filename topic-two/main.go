@@ -7,121 +7,19 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
-	"topic-two/items"
+	"topic-two/cmd"
 	"topic-two/kafka"
 
 	"github.com/IBM/sarama"
 	"github.com/fatih/color"
 )
 
-const (
-	DEBEZIUM_CONNECT_URL = "http://localhost:8083/connectors"
-	VALUE_CHANGE_TOPIC   = "value_change"
-	DEBEZIUM_ITEM_TOPIC  = "debezium.public.items"
-)
-
-type Executer struct {
-	cluster *kafka.KafkaCluster
-	wg      *sync.WaitGroup
-	ctx     context.Context
-	store   items.Storage
-}
-
-func NewExecuter(cluster *kafka.KafkaCluster, wg *sync.WaitGroup, ctx context.Context, store items.Storage) *Executer {
-	return &Executer{
-		cluster: cluster,
-		wg:      wg,
-		ctx:     ctx,
-		store:   store,
-	}
-}
-
-func (e *Executer) SetupKafka() {
-	err := e.cluster.CreateAdmin()
-
-	if err != nil {
-		log.Fatalf("Failed to create Kafka ClusterAdmin: %v\n", err)
-	}
-
-	defer func() {
-		if err := e.cluster.Admin.Close(); err != nil {
-			log.Fatalf("Failed to close Kafka ClusterAdmin: %v", err)
-		}
-		color.Red("Kafka ClusterAdmin successfully closed!")
-	}()
-
-	err = e.cluster.CreateTopic(VALUE_CHANGE_TOPIC, 3, 2)
-	if err != nil {
-		log.Fatalf("Failed to create the topic: %v", err)
-	}
-
-	func() {
-		startTime := time.Now() // Capture the start time
-
-		for {
-			checkTime := time.Now()
-			err := e.cluster.ListTopics()
-			color.Magenta("Took %dms to list topics", time.Since(checkTime).Milliseconds())
-			if err == nil {
-				elapsed := time.Since(startTime) // Calculate elapsed time
-				color.Cyan("It took %d milliseconds to achieve sync", elapsed.Milliseconds())
-				return
-			}
-			time.Sleep(2 * time.Millisecond)
-		}
-	}()
-}
-
-func (e *Executer) SetupDebezium() {
-	isConnectorPresent, err := e.cluster.CheckDebeziumConnector(DEBEZIUM_CONNECT_URL, "pg_connector")
-	if err != nil {
-		log.Fatalf("Error in checking presence of connector - %v", err)
-	}
-
-	if !isConnectorPresent {
-		err = e.cluster.CreateDebeziumConnector(DEBEZIUM_CONNECT_URL)
-		if err != nil {
-			log.Fatalf("Error in creating the connector - %v", err)
-		}
-	}
-
-	log.Println("Debezium Connector Is Active!")
-}
-
-func (e *Executer) SetupDB() {
-	err := e.store.CreateItemTable()
-	if err != nil {
-		log.Fatalf("Error in creating item table: %v", err)
-	}
-
-	items := []*items.Item{{Name: "Spotify", Value: 500.0}, {Name: "Reddit", Value: 800.0}, {Name: "Netflix", Value: 200.0}}
-
-	for _, item := range items {
-		err = e.store.CreateItem(item)
-		if err != nil {
-			log.Fatalf("Error in adding item to table: %v", err)
-		}
-	}
-}
-
-func (e *Executer) Setup() {
-	store, err := items.NewPostgresStore()
-	if err != nil {
-		log.Fatalf("Error in creating Postgres Store: %v", err)
-	}
-	e.store = store
-	// e.SetupKafka()
-	e.SetupDebezium()
-	e.SetupDB()
-}
-
 func main() {
-	if len(os.Args) < 4 {
+	if len(os.Args) < 2 {
 		color.Red("No Command Provided")
 		return
 	}
-	command := os.Args[3]
+	command := os.Args[1]
 	color.Yellow(command)
 
 	brokers := []string{"localhost:9092", "localhost:9093", "locahost:9094"}
@@ -131,7 +29,7 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	executer := NewExecuter(kc, nil, ctx, nil)
+	executer := cmd.NewExecuter(kc, nil, ctx, nil)
 	defer cancel()
 
 	switch command {
@@ -141,13 +39,11 @@ func main() {
 		return
 	case "run-producer":
 		wg := new(sync.WaitGroup)
-		executer.wg = wg
-		executer.wg.Add(1)
+		executer.SetWg(wg)
 		go executer.RunProducer()
 	case "run-consumer":
 		wg := new(sync.WaitGroup)
-		executer.wg = wg
-		executer.wg.Add(1)
+		executer.SetWg(wg)
 		go executer.RunConsumer()
 	case "add-debezium":
 		executer.SetupDebezium()
@@ -155,21 +51,27 @@ func main() {
 		return
 	case "stream":
 		wg := new(sync.WaitGroup)
-		executer.wg = wg
-		executer.wg.Add(1)
+		executer.SetWg(wg)
 		go executer.Stream()
 	default:
 		log.Println("Command Not Found")
 	}
 
-	sig := <-sigChan
-	color.Red("Received signal: %v, initiating graceful shutdown.", sig)
+	select {
+	case sig := <-sigChan:
+		color.Red("Received signal: %v, initiating graceful shutdown.", sig)
+	case err := <-executer.GetErrors():
+		if err != nil {
+			color.Red("Received error: %s, initiating graceful shutdown.", err.Error())
+		} else {
+			color.Yellow("Error channel closed, initiating graceful shutdown.")
+		}
+	}
 
 	cancel()
+	executer.CloseErrorChannel()
 
-	if executer.wg != nil {
-		executer.wg.Wait()
-	}
+	executer.Wait()
 
 	color.Red("Program Exited")
 }

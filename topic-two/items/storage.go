@@ -14,6 +14,7 @@ type Storage interface {
 	GetAllItems() ([]*Item, error)
 	GetItem(int) (*Item, error)
 	DeleteItem(int) error
+	ApplyDelta(int, float64) (float64, error)
 }
 
 type PostgresStore struct {

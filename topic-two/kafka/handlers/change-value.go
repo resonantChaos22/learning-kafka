@@ -39,12 +39,12 @@ func (handler ChangeValueHandler) ConsumeClaim(session sarama.ConsumerGroupSessi
 			log.Printf("Error in getting the item with id %d: %v", id, err)
 			continue
 		}
-		err = handler.Store.UpdateValue(item.ID, item.Value+delta)
+		updatedValue, err := handler.Store.ApplyDelta(id, delta)
 		if err != nil {
 			log.Printf("Error in updating the value for item with id %d: %v", id, err)
 			continue
 		}
-		color.Green("Successfully updated %v's value to %f with a delta of %v", item.Name, item.Value+delta, delta)
+		color.Green("Successfully updated %v's value to %f with a delta of %v", item.Name, updatedValue, delta)
 		session.MarkMessage(message, "Processed!")
 	}
 

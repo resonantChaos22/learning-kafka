@@ -53,7 +53,8 @@ func (kc *KafkaCluster) CreateTopic(topicName string, numPartitions, replication
 	}
 	kc.topics = append(kc.topics, topicName)
 
-	color.Green("Topic with name %s, number of partitions %d and replication factor %d successfully created.\n", topicName, numPartitions, replicationFactor)
+	color.Green("Topic with name %s, number of partitions %d and replication factor %d successfully created.\n",
+		topicName, numPartitions, replicationFactor)
 	return nil
 }
 
